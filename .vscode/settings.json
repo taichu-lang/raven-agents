@@ -1,0 +1,12 @@
+{
+  "cSpell.words": ["omitzero", "taichu"],
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.go$",
+        "cmd": "golines -m 112 -w ${file}"
+      }
+    ]
+  },
+  "go.testFlags": ["-v"]
+}
