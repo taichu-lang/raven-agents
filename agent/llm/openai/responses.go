@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"iter"
 	"log/slog"
 	"net/http"
 
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/taichu-lang/raven-agents/pkg/llm"
-	"github.com/taichu-lang/raven-agents/pkg/util"
+	"github.com/taichu-lang/raven-agents/agent"
+	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/util"
 )
 
 type Provider struct {
@@ -35,7 +35,7 @@ func (p *Provider) Gen(
 	model string,
 	messages []*llm.Message,
 	options ...llm.WithGenOption,
-) iter.Seq2[*llm.ResponseChunk, error] {
+) agent.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		opts := llm.ApplyGenOptions(options)
 		params := buildResponsesMessage(model, messages, opts)
@@ -60,32 +60,32 @@ func (p *Provider) Gen(
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+p.options.ApiKey)
 		if opts.Stream {
-			streaming, err := p.getStreaming(ctx, req)
-			if err != nil {
-				p.logger.Error("failed to get generation response in stream mode", "err", err)
-				yield(nil, err)
-			} else {
-				defer func() {
-					streaming.Close()
-				}()
+			streaming := p.getStreaming(req)
+			defer func() {
+				streaming.Close()
+			}()
 
-				for streaming.Next() {
-					chunk, err := streamEventToChunk(streaming.Current())
-					if err != nil {
-						p.logger.Error("failed to convert stream event to response chunk", "err", err)
-						yield(nil, err)
-						return
-					}
-
-					if !yield(chunk, nil) {
-						return
-					}
+			for streaming.Next() {
+				chunk, err := streamEventToResponse(streaming.Current())
+				if err != nil {
+					p.logger.Error("failed to convert stream event to response chunk", "err", err)
+					yield(nil, err)
+					return
 				}
-				if streaming.Err() != nil {
-					yield(nil, streaming.Err())
+
+				// Discard some stream events.
+				if chunk == nil {
+					continue
+				}
+
+				if !yield(chunk, nil) {
+					return
 				}
 			}
 
+			if streaming.Err() != nil {
+				yield(nil, streaming.Err())
+			}
 		} else {
 			chunk, err := p.get(req)
 			if err != nil {
@@ -131,11 +131,11 @@ func (p *Provider) get(req *http.Request) (*llm.ResponseChunk, error) {
 	for _, out := range response.Output {
 		switch out := out.AsAny().(type) {
 		case responses.ResponseOutputMessage:
-			chunk.Contents = outputTextToContent(out.Content, chunk.Contents)
+			chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
 		}
 	}
 
-	if usage := responsesUsageToContent(response.Usage); usage != nil {
+	if usage := toUsageContent(response.Usage); usage != nil {
 		chunk.Contents = append(chunk.Contents, usage)
 	}
 
@@ -143,11 +143,11 @@ func (p *Provider) get(req *http.Request) (*llm.ResponseChunk, error) {
 }
 
 func (p *Provider) getStreaming(
-	ctx context.Context,
 	req *http.Request,
-) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
+) *ssestream.Stream[responses.ResponseStreamEventUnion] {
 	req.Header.Set("Accept", "text/event-stream")
-	return nil, nil
+	resp, err := p.client.Do(req)
+	return ssestream.NewStream[responses.ResponseStreamEventUnion](ssestream.NewDecoder(resp), err)
 }
 
 func buildResponsesMessage(

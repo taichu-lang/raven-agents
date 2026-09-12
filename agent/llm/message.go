@@ -17,6 +17,9 @@ type Message struct {
 	Contents MessageContents
 }
 
+// FinishReasonDone represents that the response is completed successfully.
+const FinishReasonDone = "done"
+
 type ResponseChunk struct {
 	FinishReason string          `json:"finish_reason,omitzero"`
 	Role         Role            `json:"role,omitzero"`

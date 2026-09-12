@@ -29,14 +29,16 @@ func (t TextContent) Kind() ContentKind {
 	return ContentKindText
 }
 
-func (t TextContent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		TextContent
+func (t *TextContent) MarshalJSON() ([]byte, error) {
+	type alias TextContent
+	tmp := struct {
+		*alias
 		Type ContentKind `json:"type"`
 	}{
-		TextContent: t,
-		Type:        ContentKindText,
-	})
+		alias: (*alias)(t),
+		Type:  t.Kind(),
+	}
+	return json.Marshal(tmp)
 }
 
 func (t *TextContent) Raw() string {
@@ -64,12 +66,14 @@ func (u UsageContent) Kind() ContentKind {
 	return ContentKindUsage
 }
 
-func (u UsageContent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		UsageContent
-		Type ContentKind `json:"type"`
+func (u *UsageContent) MarshalJSON() ([]byte, error) {
+	type alias UsageContent
+	tmp := struct {
+		*alias
+		Type ContentKind
 	}{
-		UsageContent: u,
-		Type:         ContentKindUsage,
-	})
+		alias: (*alias)(u),
+		Type:  u.Kind(),
+	}
+	return json.Marshal(tmp)
 }
