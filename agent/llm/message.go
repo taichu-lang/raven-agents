@@ -20,8 +20,17 @@ type Message struct {
 // FinishReasonDone represents that the response is completed successfully.
 const FinishReasonDone = "done"
 
+type ResponseChunkType string
+
+const (
+	ResponseChunkTypeDelta ResponseChunkType = "delta"
+	ResponseChunkTypeFinal ResponseChunkType = "final"
+	ResponseChunkTypeUsage ResponseChunkType = "usage"
+)
+
 type ResponseChunk struct {
-	FinishReason string          `json:"finish_reason,omitzero"`
-	Role         Role            `json:"role,omitzero"`
-	Contents     MessageContents `json:"contents,omitzero"`
+	Type         ResponseChunkType `json:"type"`
+	FinishReason string            `json:"finish_reason,omitzero"`
+	Role         Role              `json:"role,omitzero"`
+	Contents     MessageContents   `json:"contents,omitzero"`
 }

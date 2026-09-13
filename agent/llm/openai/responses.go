@@ -79,20 +79,39 @@ func (p *Provider) Gen(
 				yield(nil, streaming.Err())
 			}
 		} else {
-			chunk, err := p.get(req)
+			response, err := p.get(req)
 			if err != nil {
 				p.logger.Error("failed to get generation response in non-stream mode", "err", err)
 				yield(nil, err)
-			} else {
-				if !yield(chunk, nil) {
-					return
+				return
+			}
+
+			for _, out := range response.Output {
+				switch out := out.AsAny().(type) {
+				case responses.ResponseOutputMessage:
+					chunk := &llm.ResponseChunk{
+						Type: llm.ResponseChunkTypeFinal,
+						Role: llm.RoleAssistant,
+					}
+					chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
+					yield(chunk, nil)
 				}
 			}
+
+			// TODO(Leo): event order, can usage event before final event for all providers ?
+			if usage := toUsageContent(response.Usage); usage != nil {
+				yield(&llm.ResponseChunk{
+					Type:     llm.ResponseChunkTypeUsage,
+					Role:     llm.RoleAssistant,
+					Contents: llm.MessageContents{usage},
+				}, nil)
+			}
+
 		}
 	}
 }
 
-func (p *Provider) get(req *http.Request) (*llm.ResponseChunk, error) {
+func (p *Provider) get(req *http.Request) (*responses.Response, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -116,22 +135,7 @@ func (p *Provider) get(req *http.Request) (*llm.ResponseChunk, error) {
 		return nil, err
 	}
 
-	chunk := &llm.ResponseChunk{
-		Role: llm.RoleAssistant,
-	}
-
-	for _, out := range response.Output {
-		switch out := out.AsAny().(type) {
-		case responses.ResponseOutputMessage:
-			chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
-		}
-	}
-
-	if usage := toUsageContent(response.Usage); usage != nil {
-		chunk.Contents = append(chunk.Contents, usage)
-	}
-
-	return chunk, nil
+	return &response, nil
 }
 
 func (p *Provider) getStreaming(
@@ -155,36 +159,8 @@ func buildResponsesMessage(
 	}
 
 	for _, msg := range messages {
-		switch msg.Role {
-		case llm.RoleUser:
-			contents := make([]ResponseInputContent, 0, len(msg.Contents))
-			for _, mc := range msg.Contents {
-				contents = buildInputContent(mc, contents)
-			}
-			params.Input = append(params.Input, ResponseInputItem{
-				Role:    RoleUser,
-				Content: contents,
-			})
-
-		case llm.RoleSystem:
-			// Use instructions option ?
-		}
+		params.Input = append(params.Input, inputFromMessage(msg))
 	}
 
 	return params
-}
-
-func buildInputContent(content llm.MessageContent, inputs []ResponseInputContent) []ResponseInputContent {
-	switch c := content.(type) {
-	case *llm.TextContent:
-		return append(inputs, ResponseInputContent{
-			Type: InputTypeText,
-			ResponseInputText: &ResponseInputText{
-				Text: c.Raw(),
-			},
-		})
-
-	default:
-		panic("unsupported message content")
-	}
 }

@@ -24,7 +24,8 @@ type Agent struct {
 	options     []llm.WithGenOption
 
 	// run is the entrypoint for the agent, which combines all the middlewares.
-	run RunFunc
+	run     RunFunc
+	history HistoryProvider
 }
 
 func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
@@ -32,6 +33,7 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 		cfg:         cfg,
 		logger:      slog.Default().With("agent", cfg.Name),
 		llmProvider: NewProvider(providerOptions),
+		history:     NewHistoryProvider(),
 	}
 
 	options := []llm.WithGenOption{}
@@ -41,7 +43,7 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 
 	a.options = options
 
-	middlewares := append(cfg.Middlewares, NewLoggerMiddleware(a.logger))
+	middlewares := append(cfg.Middlewares, NewLoggerMiddleware(a.logger), NewHistoryMiddleware(a.history))
 	a.run = compileRunChain(a.invoke, middlewares)
 	return a
 }
@@ -58,5 +60,6 @@ func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 }
 
 func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
+	messages, _ = a.history.Retrieve(ctx, messages)
 	return a.llmProvider.Gen(ctx, a.cfg.Model, messages, a.options...)
 }

@@ -62,3 +62,35 @@ func (lm *LoggerMiddleware) Run(next RunFunc, ctx context.Context, messages []*l
 		}
 	}
 }
+
+type HistoryMiddleware struct {
+	history HistoryProvider
+}
+
+func NewHistoryMiddleware(history HistoryProvider) Middleware {
+	return &HistoryMiddleware{
+		history: history,
+	}
+}
+
+func (hm *HistoryMiddleware) Run(
+	next RunFunc,
+	ctx context.Context,
+	messages []*llm.Message,
+) llm.ResponseStream {
+	return func(yield func(*llm.ResponseChunk, error) bool) {
+		for chunk, err := range next(ctx, messages) {
+			if chunk.Type == llm.ResponseChunkTypeFinal {
+				// TODO(Leo): handle error.
+				_ = hm.history.Store(ctx, &llm.Message{
+					Role:     chunk.Role,
+					Contents: chunk.Contents,
+				})
+			}
+
+			if !yield(chunk, err) {
+				return
+			}
+		}
+	}
+}

@@ -20,20 +20,29 @@ func streamEventToResponse(event responses.ResponseStreamEventUnion) (*llm.Respo
 	switch e := event.AsAny().(type) {
 	case responses.ResponseTextDeltaEvent:
 		return &llm.ResponseChunk{
+			Type:     llm.ResponseChunkTypeDelta,
 			Role:     llm.RoleAssistant,
 			Contents: llm.MessageContents{llm.NewTextContent(e.Delta)},
 		}, nil
 
 	case responses.ResponseOutputItemDoneEvent:
 		// TODO(Leo): handle annotations.
-		chunk := &llm.ResponseChunk{Role: llm.RoleAssistant, FinishReason: llm.FinishReasonDone}
+		chunk := &llm.ResponseChunk{
+			Type:         llm.ResponseChunkTypeFinal,
+			Role:         llm.RoleAssistant,
+			FinishReason: llm.FinishReasonDone,
+		}
 		if msg, ok := e.Item.AsAny().(responses.ResponseOutputMessage); ok {
 			chunk.Contents = responsesToMessageContents(msg.Content, chunk.Contents)
 			return chunk, nil
 		}
 
 	case responses.ResponseCompletedEvent:
-		chunk := &llm.ResponseChunk{Role: llm.RoleAssistant, FinishReason: responsesFinishReason(&e.Response)}
+		chunk := &llm.ResponseChunk{
+			Type:         llm.ResponseChunkTypeUsage,
+			Role:         llm.RoleAssistant,
+			FinishReason: responsesFinishReason(&e.Response),
+		}
 		if usage := toUsageContent(e.Response.Usage); usage != nil {
 			chunk.Contents = llm.MessageContents{usage}
 			return chunk, nil
