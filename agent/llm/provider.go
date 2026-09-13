@@ -5,10 +5,25 @@ import (
 	"iter"
 )
 
+type ResponseStream = iter.Seq2[*ResponseChunk, error]
+
+// Protocol declares the model family and the api schema used by the provider.
+type Protocol string
+
+const (
+	// ProtocolOpenAI represents OpenAI responses api, endpoint is '/v1/responses'.
+	ProtocolOpenAI Protocol = "openai"
+
+	// ProtocolClaude represents Claude message api, endpoint is '/v1/messages'.
+	ProtocolClaude Protocol = "claude"
+)
+
 type ProviderOptions struct {
 	ApiKey   string
-	BaseURL  string
 	Endpoint string
+
+	// Default is ProtocolOpenAI.
+	Protocol Protocol
 }
 
 type GenOptions struct {
@@ -24,7 +39,7 @@ type Provider interface {
 		model string,
 		messages []*Message,
 		options ...WithGenOption,
-	) iter.Seq2[*ResponseChunk, error]
+	) ResponseStream
 }
 
 func WithInstructions(instructions string) WithGenOption {

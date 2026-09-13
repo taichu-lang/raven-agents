@@ -2,16 +2,13 @@ package agent
 
 import (
 	"context"
-	"iter"
 	"log/slog"
 
 	"github.com/taichu-lang/raven-agents/agent/llm"
 )
 
-type ResponseStream = iter.Seq2[*llm.ResponseChunk, error]
-
 // RunFunc declares the abstract entrypoint for nodes (ex: llm, middleware) in the agent.
-type RunFunc = func(ctx context.Context, messages []*llm.Message) ResponseStream
+type RunFunc = func(ctx context.Context, messages []*llm.Message) llm.ResponseStream
 
 type Config struct {
 	Name         string
@@ -30,11 +27,11 @@ type Agent struct {
 	run RunFunc
 }
 
-func NewAgent(cfg *Config, llmProvider llm.Provider) *Agent {
+func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 	a := &Agent{
 		cfg:         cfg,
 		logger:      slog.Default().With("agent", cfg.Name),
-		llmProvider: llmProvider,
+		llmProvider: NewProvider(providerOptions),
 	}
 
 	options := []llm.WithGenOption{}
@@ -49,7 +46,7 @@ func NewAgent(cfg *Config, llmProvider llm.Provider) *Agent {
 	return a
 }
 
-func (a *Agent) RunText(ctx context.Context, text string) ResponseStream {
+func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 	return a.run(ctx, []*llm.Message{
 		{
 			Role: llm.RoleUser,
@@ -60,6 +57,6 @@ func (a *Agent) RunText(ctx context.Context, text string) ResponseStream {
 	})
 }
 
-func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) ResponseStream {
+func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
 	return a.llmProvider.Gen(ctx, a.cfg.Model, messages, a.options...)
 }

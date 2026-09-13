@@ -9,7 +9,7 @@ import (
 )
 
 type Middleware interface {
-	Run(next RunFunc, ctx context.Context, messages []*llm.Message) ResponseStream
+	Run(next RunFunc, ctx context.Context, messages []*llm.Message) llm.ResponseStream
 }
 
 type middlewareRunner struct {
@@ -17,8 +17,8 @@ type middlewareRunner struct {
 	next RunFunc
 }
 
-func (mr middlewareRunner) Run(ctx context.Context, messages []*llm.Message) ResponseStream {
-	next := func(ctx context.Context, messages []*llm.Message) ResponseStream {
+func (mr middlewareRunner) Run(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
+	next := func(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
 		return mr.next(ctx, messages)
 	}
 
@@ -47,7 +47,7 @@ func NewLoggerMiddleware(logger *slog.Logger) Middleware {
 	}
 }
 
-func (lm *LoggerMiddleware) Run(next RunFunc, ctx context.Context, messages []*llm.Message) ResponseStream {
+func (lm *LoggerMiddleware) Run(next RunFunc, ctx context.Context, messages []*llm.Message) llm.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		for chunk, err := range next(ctx, messages) {
 			if err != nil {

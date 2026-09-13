@@ -11,7 +11,6 @@ import (
 
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/util"
 )
@@ -22,7 +21,7 @@ type Provider struct {
 	logger  *slog.Logger
 }
 
-func NewOpenAIProvider(options *llm.ProviderOptions) llm.Provider {
+func NewProvider(options *llm.ProviderOptions) llm.Provider {
 	return &Provider{
 		client:  util.NewStreamClient(),
 		options: options,
@@ -35,7 +34,7 @@ func (p *Provider) Gen(
 	model string,
 	messages []*llm.Message,
 	options ...llm.WithGenOption,
-) agent.ResponseStream {
+) llm.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		opts := llm.ApplyGenOptions(options)
 		params := buildResponsesMessage(model, messages, opts)
@@ -43,14 +42,7 @@ func (p *Provider) Gen(
 
 		p.logger.Debug("request body of generation", "model", model, "options", opts, "body", string(body))
 
-		url, err := util.UriAppend(p.options.BaseURL, p.options.Endpoint)
-		if err != nil {
-			p.logger.Error("invalid endpoint", "err", err)
-			yield(nil, err)
-			return
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.Endpoint, bytes.NewReader(body))
 		if err != nil {
 			p.logger.Error("failed to create generation request", "err", err)
 			yield(nil, err)
