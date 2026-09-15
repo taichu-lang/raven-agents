@@ -79,6 +79,7 @@ func (hm *HistoryMiddleware) Run(
 	messages []*llm.Message,
 ) llm.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
+		messages, _ = hm.history.Retrieve(ctx, messages)
 		for chunk, err := range next(ctx, messages) {
 			if chunk.Type == llm.ResponseChunkTypeFinal {
 				// TODO(Leo): handle error.

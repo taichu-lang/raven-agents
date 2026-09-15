@@ -59,7 +59,15 @@ func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 	})
 }
 
+func (a *Agent) Run(ctx context.Context, messages ...llm.MessageContent) llm.ResponseStream {
+	return a.run(ctx, []*llm.Message{
+		{
+			Role:     llm.RoleUser,
+			Contents: messages,
+		},
+	})
+}
+
 func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
-	messages, _ = a.history.Retrieve(ctx, messages)
 	return a.llmProvider.Gen(ctx, a.cfg.Model, messages, a.options...)
 }

@@ -1,6 +1,11 @@
 package openai
 
-import "github.com/taichu-lang/raven-agents/agent/llm"
+import (
+	"encoding/base64"
+	"fmt"
+
+	"github.com/taichu-lang/raven-agents/agent/llm"
+)
 
 type Role string
 
@@ -24,7 +29,7 @@ type ResponseInputText struct {
 }
 
 type ResponseInputImage struct {
-	ImageURL string `json:"image_url"`
+	ImageURL string `json:"image_url,omitzero"`
 }
 
 type ResponseInputFile struct {
@@ -63,28 +68,58 @@ func inputFromMessage(message *llm.Message) *ResponseInputItem {
 	case llm.RoleUser:
 		input.Role = RoleUser
 		for _, mc := range message.Contents {
-			input.Content = buildInputContent(InputTypeUserText, mc, input.Content)
+			input.Content = inputContentFromUser(mc, input.Content)
 		}
 
 	case llm.RoleAssistant:
 		input.Role = RoleAssistant
 		for _, mc := range message.Contents {
-			input.Content = buildInputContent(InputTypeAssistant, mc, input.Content)
+			input.Content = inputContentFromAssistant(mc, input.Content)
 		}
 	}
 
 	return input
 }
 
-func buildInputContent(
-	t InputType,
+func inputContentFromUser(
 	content llm.MessageContent,
 	inputs []ResponseInputContent,
 ) []ResponseInputContent {
 	switch c := content.(type) {
 	case *llm.TextContent:
 		return append(inputs, ResponseInputContent{
-			Type: t,
+			Type: InputTypeUserText,
+			ResponseInputText: &ResponseInputText{
+				Text: c.Raw(),
+			},
+		})
+
+	case *llm.DataContent:
+		if c.MediaType.Image() {
+			encodedData := base64.StdEncoding.EncodeToString(c.Data)
+			return append(inputs, ResponseInputContent{
+				Type: InputTypeImage,
+				ResponseInputImage: &ResponseInputImage{
+					ImageURL: fmt.Sprintf("data:%s;base64,%s", c.MediaType, encodedData),
+				},
+			})
+		}
+
+		return inputs
+
+	default:
+		panic("unsupported message content")
+	}
+}
+
+func inputContentFromAssistant(
+	content llm.MessageContent,
+	inputs []ResponseInputContent,
+) []ResponseInputContent {
+	switch c := content.(type) {
+	case *llm.TextContent:
+		return append(inputs, ResponseInputContent{
+			Type: InputTypeAssistant,
 			ResponseInputText: &ResponseInputText{
 				Text: c.Raw(),
 			},

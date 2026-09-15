@@ -2,7 +2,10 @@ module github.com/taichu-lang/raven-agents
 
 go 1.27.1
 
-require github.com/openai/openai-go/v3 v3.56.0
+require (
+	github.com/google/jsonschema-go v0.4.3
+	github.com/openai/openai-go/v3 v3.56.0
+)
 
 require (
 	github.com/tidwall/gjson v1.19.0 // indirect

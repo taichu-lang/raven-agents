@@ -8,7 +8,22 @@ const (
 	ContentKindText  ContentKind = "text"
 	ContentKindURI   ContentKind = "uri"
 	ContentKindUsage ContentKind = "usage"
+
+	// ContentKindData is used to store binary and non-binary data, which depends on the media type.
+	// Ex: an image file, a text file, etc.
+	ContentKindData ContentKind = "data"
 )
+
+type MediaType string
+
+const (
+	MediaTypeImageJPG MediaType = "image/jpeg"
+	MediaTypeImagePNG MediaType = "image/png"
+)
+
+func (m MediaType) Image() bool {
+	return m == MediaTypeImageJPG || m == MediaTypeImagePNG
+}
 
 type MessageContent interface {
 	json.Marshaler
@@ -46,7 +61,7 @@ func (t *TextContent) Raw() string {
 }
 
 type URIContent struct {
-	MediaType string
+	MediaType MediaType
 	URI       string
 }
 
@@ -74,6 +89,34 @@ func (u *UsageContent) MarshalJSON() ([]byte, error) {
 	}{
 		alias: (*alias)(u),
 		Type:  u.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
+type DataContent struct {
+	MediaType MediaType `json:"media_type"`
+	Data      []byte    `json:"data"`
+}
+
+func NewDataContent(media MediaType, data []byte) *DataContent {
+	return &DataContent{
+		MediaType: media,
+		Data:      data,
+	}
+}
+
+func (d DataContent) Kind() ContentKind {
+	return ContentKindData
+}
+
+func (d *DataContent) MarshalJSON() ([]byte, error) {
+	type alias DataContent
+	tmp := struct {
+		*alias
+		Type ContentKind
+	}{
+		alias: (*alias)(d),
+		Type:  d.Kind(),
 	}
 	return json.Marshal(tmp)
 }
