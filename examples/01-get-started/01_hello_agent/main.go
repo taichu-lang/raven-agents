@@ -13,11 +13,12 @@ func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 
 	a := agent.NewAgent(&agent.Config{
+		Name: "hello-world",
+	}, &llm.ProviderOptions{
+		ApiKey:       os.Getenv("OPENAI_APIKEY"),
+		Endpoint:     os.Getenv("OPENAI_API"),
 		Instructions: "You are a helpful assistant!",
 		Model:        "gpt-4.1-nano",
-	}, &llm.ProviderOptions{
-		ApiKey:   os.Getenv("OPENAI_APIKEY"),
-		Endpoint: os.Getenv("OPENAI_API"),
 	})
 
 	for chunk, err := range a.RunText(context.Background(), "Hi") {

@@ -11,17 +11,14 @@ import (
 type RunFunc = func(ctx context.Context, messages []*llm.Message) llm.ResponseStream
 
 type Config struct {
-	Name         string
-	Model        string
-	Instructions string
-	Middlewares  []Middleware
+	Name        string
+	Middlewares []Middleware
 }
 
 type Agent struct {
 	cfg         *Config
 	logger      *slog.Logger
 	llmProvider llm.Provider
-	options     []llm.WithGenOption
 
 	// run is the entrypoint for the agent, which combines all the middlewares.
 	run     RunFunc
@@ -35,13 +32,6 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 		llmProvider: NewProvider(providerOptions),
 		history:     NewHistoryProvider(),
 	}
-
-	options := []llm.WithGenOption{}
-	if cfg.Instructions != "" {
-		options = append(options, llm.WithInstructions(cfg.Instructions))
-	}
-
-	a.options = options
 
 	middlewares := append(cfg.Middlewares, NewLoggerMiddleware(a.logger), NewHistoryMiddleware(a.history))
 	a.run = compileRunChain(a.invoke, middlewares)
@@ -69,5 +59,5 @@ func (a *Agent) Run(ctx context.Context, messages ...llm.MessageContent) llm.Res
 }
 
 func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
-	return a.llmProvider.Gen(ctx, a.cfg.Model, messages, a.options...)
+	return a.llmProvider.Gen(ctx, messages)
 }

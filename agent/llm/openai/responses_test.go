@@ -12,9 +12,10 @@ func TestGen(t *testing.T) {
 	p := NewProvider(&llm.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
+		Model:    "gpt-4.1-nano",
 	})
 
-	iter := p.Gen(context.Background(), "gpt-4.1-nano", []*llm.Message{
+	iter := p.Gen(context.Background(), []*llm.Message{
 		{
 			Role: llm.RoleUser,
 			Contents: llm.MessageContents{
@@ -36,9 +37,10 @@ func TestGenStream(t *testing.T) {
 	p := NewProvider(&llm.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
+		Model:    "gpt-4.1-nano",
 	})
 
-	iter := p.Gen(context.Background(), "gpt-4.1-nano", []*llm.Message{
+	iter := p.Gen(context.Background(), []*llm.Message{
 		{
 			Role: llm.RoleUser,
 			Contents: llm.MessageContents{

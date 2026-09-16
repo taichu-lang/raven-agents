@@ -24,44 +24,44 @@ const (
 	InputTypeAssistant InputType = "output_text"
 )
 
-type ResponseInputText struct {
+type ResponsesInputText struct {
 	Text string `json:"text"`
 }
 
-type ResponseInputImage struct {
+type ResponsesInputImage struct {
 	ImageURL string `json:"image_url,omitzero"`
 }
 
-type ResponseInputFile struct {
+type ResponsesInputFile struct {
 	FileURL string `json:"file_url"`
 }
 
-type ResponseInputContent struct {
+type ResponsesInputContent struct {
 	Type InputType `json:"type"`
-	*ResponseInputText
-	*ResponseInputImage
-	*ResponseInputFile
+	*ResponsesInputText
+	*ResponsesInputImage
+	*ResponsesInputFile
 }
 
-type ResponseInputItem struct {
-	Role    Role                   `json:"role"`
-	Content []ResponseInputContent `json:"content"`
+type ResponsesInputItem struct {
+	Role    Role                    `json:"role"`
+	Content []ResponsesInputContent `json:"content"`
 }
 
-type ResponseInput []*ResponseInputItem
+type ResponsesInput []*ResponsesInputItem
 
 type ResponsesParams struct {
-	Model           string        `json:"model"`
-	Stream          bool          `json:"stream"`
-	Instructions    string        `json:"instructions,omitzero"`
-	MaxOutputTokens int64         `json:"max_output_tokens,omitzero"`
-	Temperature     float64       `json:"temperature,omitzero"`
-	Input           ResponseInput `json:"input,omitzero"`
+	Model           string         `json:"model"`
+	Stream          bool           `json:"stream"`
+	Instructions    string         `json:"instructions,omitzero"`
+	MaxOutputTokens int64          `json:"max_output_tokens,omitzero"`
+	Temperature     float64        `json:"temperature,omitzero"`
+	Input           ResponsesInput `json:"input,omitzero"`
 }
 
-func inputFromMessage(message *llm.Message) *ResponseInputItem {
-	input := &ResponseInputItem{
-		Content: make([]ResponseInputContent, 0, len(message.Contents)),
+func inputFromMessage(message *llm.Message) *ResponsesInputItem {
+	input := &ResponsesInputItem{
+		Content: make([]ResponsesInputContent, 0, len(message.Contents)),
 	}
 
 	switch message.Role {
@@ -83,13 +83,13 @@ func inputFromMessage(message *llm.Message) *ResponseInputItem {
 
 func inputContentFromUser(
 	content llm.MessageContent,
-	inputs []ResponseInputContent,
-) []ResponseInputContent {
+	inputs []ResponsesInputContent,
+) []ResponsesInputContent {
 	switch c := content.(type) {
 	case *llm.TextContent:
-		return append(inputs, ResponseInputContent{
+		return append(inputs, ResponsesInputContent{
 			Type: InputTypeUserText,
-			ResponseInputText: &ResponseInputText{
+			ResponsesInputText: &ResponsesInputText{
 				Text: c.Raw(),
 			},
 		})
@@ -97,9 +97,9 @@ func inputContentFromUser(
 	case *llm.DataContent:
 		if c.MediaType.Image() {
 			encodedData := base64.StdEncoding.EncodeToString(c.Data)
-			return append(inputs, ResponseInputContent{
+			return append(inputs, ResponsesInputContent{
 				Type: InputTypeImage,
-				ResponseInputImage: &ResponseInputImage{
+				ResponsesInputImage: &ResponsesInputImage{
 					ImageURL: fmt.Sprintf("data:%s;base64,%s", c.MediaType, encodedData),
 				},
 			})
@@ -114,13 +114,13 @@ func inputContentFromUser(
 
 func inputContentFromAssistant(
 	content llm.MessageContent,
-	inputs []ResponseInputContent,
-) []ResponseInputContent {
+	inputs []ResponsesInputContent,
+) []ResponsesInputContent {
 	switch c := content.(type) {
 	case *llm.TextContent:
-		return append(inputs, ResponseInputContent{
+		return append(inputs, ResponsesInputContent{
 			Type: InputTypeAssistant,
-			ResponseInputText: &ResponseInputText{
+			ResponsesInputText: &ResponsesInputText{
 				Text: c.Raw(),
 			},
 		})

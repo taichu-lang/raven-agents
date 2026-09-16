@@ -18,17 +18,23 @@ const (
 	ProtocolClaude Protocol = "claude"
 )
 
+// ProviderOptions is the constructor options of an instance of llm provider.
+// Different models in the same family may have different instructions, context
+// windows size, and conversation history (ex: reasoning) may not be directly
+// transferable to another model. So by design, each provider instance owns
+// the `model` and `instructions`.
 type ProviderOptions struct {
 	ApiKey   string
 	Endpoint string
 
 	// Default is ProtocolOpenAI.
-	Protocol Protocol
+	Protocol     Protocol
+	Model        string
+	Instructions string
 }
 
 type GenOptions struct {
-	Instructions string
-	Stream       bool
+	Stream bool
 }
 
 type WithGenOption func(*GenOptions)
@@ -36,16 +42,9 @@ type WithGenOption func(*GenOptions)
 type Provider interface {
 	Gen(
 		ctx context.Context,
-		model string,
 		messages []*Message,
 		options ...WithGenOption,
 	) ResponseStream
-}
-
-func WithInstructions(instructions string) WithGenOption {
-	return func(o *GenOptions) {
-		o.Instructions = instructions
-	}
 }
 
 func WithStream(stream bool) WithGenOption {

@@ -31,16 +31,23 @@ func NewProvider(options *llm.ProviderOptions) llm.Provider {
 
 func (p *Provider) Gen(
 	ctx context.Context,
-	model string,
 	messages []*llm.Message,
 	options ...llm.WithGenOption,
 ) llm.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		opts := llm.ApplyGenOptions(options)
-		params := buildResponsesMessage(model, messages, opts)
+		params := p.newResponsesParams(p.options.Model, messages, opts)
 		body, _ := json.Marshal(params)
 
-		p.logger.Debug("request body of generation", "model", model, "options", opts, "body", string(body))
+		p.logger.Debug(
+			"request body of generation",
+			"model",
+			p.options.Model,
+			"options",
+			opts,
+			"body",
+			string(body),
+		)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.Endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -146,7 +153,7 @@ func (p *Provider) getStreaming(
 	return ssestream.NewStream[responses.ResponseStreamEventUnion](ssestream.NewDecoder(resp), err)
 }
 
-func buildResponsesMessage(
+func (p *Provider) newResponsesParams(
 	model string,
 	messages []*llm.Message,
 	options *llm.GenOptions,
@@ -154,8 +161,8 @@ func buildResponsesMessage(
 	params := &ResponsesParams{
 		Model:        model,
 		Stream:       options.Stream,
-		Instructions: options.Instructions,
-		Input:        make(ResponseInput, 0, len(messages)),
+		Instructions: p.options.Instructions,
+		Input:        make(ResponsesInput, 0, len(messages)),
 	}
 
 	for _, msg := range messages {
