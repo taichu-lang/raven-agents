@@ -32,10 +32,10 @@ func NewProvider(options *llm.ProviderOptions) llm.Provider {
 func (p *Provider) Gen(
 	ctx context.Context,
 	messages []*llm.Message,
-	options ...llm.WithGenOption,
+	options *llm.GenOptions,
 ) llm.ResponseStream {
 	return func(yield func(*llm.ResponseChunk, error) bool) {
-		opts := llm.ApplyGenOptions(options)
+		opts := llm.WithDefaultOptions(options)
 		params := p.newResponsesParams(p.options.Model, messages, opts)
 		body, _ := json.Marshal(params)
 
@@ -150,6 +150,18 @@ func (p *Provider) getStreaming(
 ) *ssestream.Stream[responses.ResponseStreamEventUnion] {
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := p.client.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		p.logger.Error(
+			"response of generation request is not ok",
+			"status",
+			resp.StatusCode,
+			"err",
+			string(body),
+		)
+		return ssestream.NewStream[responses.ResponseStreamEventUnion](nil, errors.New(string(body)))
+	}
+
 	return ssestream.NewStream[responses.ResponseStreamEventUnion](ssestream.NewDecoder(resp), err)
 }
 
@@ -167,6 +179,16 @@ func (p *Provider) newResponsesParams(
 
 	for _, msg := range messages {
 		params.Input = append(params.Input, inputFromMessage(msg))
+	}
+
+	if options.OutputFormat != nil {
+		params.Text = &ResponseTextConfig{
+			Format: &ResponseFormatJSONSchema{
+				Type:   "json_schema",
+				Schema: options.OutputFormat.Schema,
+				Name:   options.OutputFormat.TypeName,
+			},
+		}
 	}
 
 	return params

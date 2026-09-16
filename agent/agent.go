@@ -8,7 +8,7 @@ import (
 )
 
 // RunFunc declares the abstract entrypoint for nodes (ex: llm, middleware) in the agent.
-type RunFunc = func(ctx context.Context, messages []*llm.Message) llm.ResponseStream
+type RunFunc = func(ctx context.Context, messages []*llm.Message, options *llm.GenOptions) llm.ResponseStream
 
 type Config struct {
 	Name        string
@@ -33,7 +33,12 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 		history:     NewHistoryProvider(),
 	}
 
-	middlewares := append(cfg.Middlewares, NewLoggerMiddleware(a.logger), NewHistoryMiddleware(a.history))
+	middlewares := append(
+		cfg.Middlewares,
+		NewHistoryMiddleware(a.history),
+		NewStructuredOutputMiddleware(),
+		NewLoggerMiddleware(a.logger),
+	)
 	a.run = compileRunChain(a.invoke, middlewares)
 	return a
 }
@@ -46,18 +51,27 @@ func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 				llm.NewTextContent(text),
 			},
 		},
-	})
+	}, nil)
 }
 
-func (a *Agent) Run(ctx context.Context, messages ...llm.MessageContent) llm.ResponseStream {
+func (a *Agent) Run(
+	ctx context.Context,
+	messages []llm.MessageContent,
+	options ...llm.WithGenOption,
+) llm.ResponseStream {
+	opts := llm.ApplyGenOptions(options)
 	return a.run(ctx, []*llm.Message{
 		{
 			Role:     llm.RoleUser,
 			Contents: messages,
 		},
-	})
+	}, opts)
 }
 
-func (a *Agent) invoke(ctx context.Context, messages []*llm.Message) llm.ResponseStream {
-	return a.llmProvider.Gen(ctx, messages)
+func (a *Agent) invoke(
+	ctx context.Context,
+	messages []*llm.Message,
+	options *llm.GenOptions,
+) llm.ResponseStream {
+	return a.llmProvider.Gen(ctx, messages, options)
 }

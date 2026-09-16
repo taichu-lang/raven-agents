@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 )
 
@@ -48,15 +49,27 @@ type ResponsesInputItem struct {
 	Content []ResponsesInputContent `json:"content"`
 }
 
+type ResponseTextConfig struct {
+	Format *ResponseFormatJSONSchema `json:"format,omitzero"`
+}
+
+type ResponseFormatJSONSchema struct {
+	Name   string             `json:"name,omitzero"`
+	Type   string             `json:"type"` // Always is 'json_schema'.
+	Schema *jsonschema.Schema `json:"schema"`
+	Strict bool               `json:"strict,omitzero"`
+}
+
 type ResponsesInput []*ResponsesInputItem
 
 type ResponsesParams struct {
-	Model           string         `json:"model"`
-	Stream          bool           `json:"stream"`
-	Instructions    string         `json:"instructions,omitzero"`
-	MaxOutputTokens int64          `json:"max_output_tokens,omitzero"`
-	Temperature     float64        `json:"temperature,omitzero"`
-	Input           ResponsesInput `json:"input,omitzero"`
+	Model           string              `json:"model"`
+	Stream          bool                `json:"stream"`
+	Instructions    string              `json:"instructions,omitzero"`
+	MaxOutputTokens int64               `json:"max_output_tokens,omitzero"`
+	Temperature     float64             `json:"temperature,omitzero"`
+	Input           ResponsesInput      `json:"input,omitzero"`
+	Text            *ResponseTextConfig `json:"text,omitzero"`
 }
 
 func inputFromMessage(message *llm.Message) *ResponsesInputItem {

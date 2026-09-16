@@ -3,6 +3,10 @@ package llm
 import (
 	"context"
 	"iter"
+	"reflect"
+
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/taichu-lang/raven-agents/tool"
 )
 
 type ResponseStream = iter.Seq2[*ResponseChunk, error]
@@ -33,8 +37,14 @@ type ProviderOptions struct {
 	Instructions string
 }
 
+type OutputFormatOption struct {
+	Schema   *jsonschema.Schema
+	TypeName string
+}
+
 type GenOptions struct {
-	Stream bool
+	Stream       bool
+	OutputFormat *OutputFormatOption
 }
 
 type WithGenOption func(*GenOptions)
@@ -43,13 +53,30 @@ type Provider interface {
 	Gen(
 		ctx context.Context,
 		messages []*Message,
-		options ...WithGenOption,
+		options *GenOptions,
 	) ResponseStream
 }
 
 func WithStream(stream bool) WithGenOption {
 	return func(o *GenOptions) {
 		o.Stream = stream
+	}
+}
+
+func WithOutputFormat[Out any]() WithGenOption {
+	schema, err := tool.SchemaFor[Out]()
+	if err != nil {
+		panic(err)
+	}
+
+	var zero Out
+	t := reflect.TypeOf(&zero).Elem()
+
+	return func(o *GenOptions) {
+		o.OutputFormat = &OutputFormatOption{
+			Schema:   schema,
+			TypeName: t.Name(),
+		}
 	}
 }
 
@@ -63,4 +90,14 @@ func ApplyGenOptions(options []WithGenOption) *GenOptions {
 	}
 
 	return opts
+}
+
+func WithDefaultOptions(options *GenOptions) *GenOptions {
+	if options == nil {
+		return &GenOptions{
+			Stream: true,
+		}
+	}
+
+	return options
 }

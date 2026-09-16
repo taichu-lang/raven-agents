@@ -9,30 +9,30 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm"
 )
 
+type Entities struct {
+	Attributes []string `json:"attributes"`
+	Colors     []string `json:"colors"`
+	Animals    []string `json:"animals"`
+}
+
 func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 
 	a := agent.NewAgent(&agent.Config{
-		Name: "analyze-image",
+		Name: "structured-output",
 	}, &llm.ProviderOptions{
-		ApiKey:   os.Getenv("OPENAI_APIKEY"),
-		Endpoint: os.Getenv("OPENAI_API"),
-		Model:    "gpt-6-astra",
+		ApiKey:       os.Getenv("OPENAI_APIKEY"),
+		Endpoint:     os.Getenv("OPENAI_API"),
+		Model:        "gpt-6-astra",
+		Instructions: "Extract entities from the input text",
 	})
-
-	image := "<your_image_file>"
-	imageData, err := os.ReadFile(image)
-	if err != nil {
-		slog.Error("failed to load image", "err", err)
-		return
-	}
 
 	for chunk, err := range a.Run(
 		context.Background(),
 		[]llm.MessageContent{
-			llm.NewTextContent("what's in this image?"),
-			llm.NewDataContent(llm.MediaTypeImageJPG, imageData),
+			llm.NewTextContent("The quick brown fox jumps over the lazy dog with piercing blue eyes"),
 		},
+		llm.WithOutputFormat[Entities](),
 	) {
 		if err != nil {
 			slog.Error("something wrong", "err", err)
