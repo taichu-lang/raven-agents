@@ -37,6 +37,11 @@ func streamEventToResponse(event responses.ResponseStreamEventUnion) (*llm.Respo
 			return chunk, nil
 		}
 
+		if call, ok := e.Item.AsAny().(responses.ResponseFunctionToolCall); ok {
+			chunk.Contents = llm.MessageContents{llm.NewToolCallContent(call.CallID, call.Name, call.Arguments)}
+			return chunk, nil
+		}
+
 	case responses.ResponseCompletedEvent:
 		chunk := &llm.ResponseChunk{
 			Type:         llm.ResponseChunkTypeUsage,

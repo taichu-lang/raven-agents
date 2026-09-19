@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/taichu-lang/raven-agents/tool"
@@ -23,6 +24,7 @@ type funcTool struct {
 	call         func(ctx context.Context, args string) (any, error)
 	inputSchema  *jsonschema.Schema
 	outputSchema *jsonschema.Schema
+	wrapped      bool
 }
 
 func New[In, Out any](cfg Config, h HandlerT[In, Out]) (tool.FuncTool, error) {
@@ -30,7 +32,7 @@ func New[In, Out any](cfg Config, h HandlerT[In, Out]) (tool.FuncTool, error) {
 		return nil, errors.New("handler of function tool is required")
 	}
 
-	inputSchema, err := tool.SchemaFor[In]()
+	inputSchema, wrapped, err := getInputFormat[In]()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse schema of handler's input: %w", err)
 	}
@@ -54,15 +56,31 @@ func New[In, Out any](cfg Config, h HandlerT[In, Out]) (tool.FuncTool, error) {
 		cfg:          cfg,
 		inputSchema:  inputSchema,
 		outputSchema: outputSchema,
+		wrapped:      wrapped,
 	}
 	t.call = func(ctx context.Context, args string) (any, error) {
-		var in In
-		if err := json.Unmarshal([]byte(args), &in); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal args into input type: %w", err)
+		// Unmarshal args into a arbitrary type to validate it, ex: map[string]interface{}.
+		var validating any
+		if err := json.Unmarshal([]byte(args), &validating); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal args: %w", err)
 		}
 
-		if err := resolvedInput.Validate(in); err != nil {
+		if err := resolvedInput.Validate(validating); err != nil {
 			return nil, fmt.Errorf("validate args against input schema: %w", err)
+		}
+
+		var in In
+		if t.wrapped {
+			var objected inObject[In]
+			if err := json.Unmarshal([]byte(args), &objected); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal args into input type: %w", err)
+			}
+
+			in = objected.Arg
+		} else {
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal args into input type: %w", err)
+			}
 		}
 
 		out, err := h(ctx, in)
@@ -98,4 +116,36 @@ func (t *funcTool) OutSchema() *jsonschema.Schema {
 
 func (t *funcTool) Call(ctx context.Context, args string) (any, error) {
 	return t.call(ctx, args)
+}
+
+// According to llm spec, the input schema should be an object. inObject is used
+// to wrap the input if its schema is not an object.
+type inObject[T any] struct {
+	Arg T
+}
+
+func getInputFormat[T any]() (schema *jsonschema.Schema, wrapped bool, err error) {
+	t := reflect.TypeFor[T]()
+	if t == reflect.TypeFor[any]() {
+		return nil, false, errors.New("input type can not be 'any'")
+	}
+
+	elem := t
+	for elem.Kind() == reflect.Pointer {
+		elem = elem.Elem()
+	}
+
+	if elem.Kind() == reflect.Struct {
+		schema, err = tool.SchemaFor[T]()
+		if err != nil {
+			return nil, false, err
+		}
+		return schema, false, nil
+	}
+
+	schema, err = tool.SchemaFor[inObject[T]]()
+	if err != nil {
+		return nil, false, err
+	}
+	return schema, true, nil
 }

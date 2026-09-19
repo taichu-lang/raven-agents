@@ -37,7 +37,12 @@ func (p *Provider) Gen(
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		opts := llm.WithDefaultOptions(options)
 		params := p.newResponsesParams(p.options.Model, messages, opts)
-		body, _ := json.Marshal(params)
+		body, err := json.Marshal(params)
+		if err != nil {
+			p.logger.Error("invalid generation request", "err", err)
+			yield(nil, err)
+			return
+		}
 
 		p.logger.Debug(
 			"request body of generation",
@@ -102,6 +107,13 @@ func (p *Provider) Gen(
 					}
 					chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
 					yield(chunk, nil)
+
+				case responses.ResponseFunctionToolCall:
+					yield(&llm.ResponseChunk{
+						Type:     llm.ResponseChunkTypeFinal,
+						Role:     llm.RoleAssistant,
+						Contents: llm.MessageContents{llm.NewToolCallContent(out.CallID, out.Name, out.Arguments)},
+					}, nil)
 				}
 			}
 
@@ -178,17 +190,21 @@ func (p *Provider) newResponsesParams(
 	}
 
 	for _, msg := range messages {
-		params.Input = append(params.Input, inputFromMessage(msg))
+		params.Input = append(params.Input, inputItemsFromMessage(msg)...)
 	}
 
 	if options.OutputFormat != nil {
-		params.Text = &ResponseTextConfig{
-			Format: &ResponseFormatJSONSchema{
+		params.Text = &InputTextConfig{
+			Format: &InputFormatJSONSchema{
 				Type:   "json_schema",
 				Schema: options.OutputFormat.Schema,
 				Name:   options.OutputFormat.TypeName,
 			},
 		}
+	}
+
+	if len(options.Tools) > 0 {
+		params.Tools = toolDefinitionsFromOptions(options.Tools)
 	}
 
 	return params

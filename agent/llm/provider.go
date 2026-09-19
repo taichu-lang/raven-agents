@@ -43,8 +43,13 @@ type OutputFormatOption struct {
 }
 
 type GenOptions struct {
-	Stream       bool
+	Stream bool
+
+	// OutputFormat is the schema of response what we want to get from llm, i.e.,
+	// structured model outputs.
 	OutputFormat *OutputFormatOption
+
+	Tools []tool.Tool
 }
 
 type WithGenOption func(*GenOptions)
@@ -77,6 +82,12 @@ func WithOutputFormat[Out any]() WithGenOption {
 			Schema:   schema,
 			TypeName: t.Name(),
 		}
+	}
+}
+
+func WithTool(t tool.Tool) WithGenOption {
+	return func(o *GenOptions) {
+		o.Tools = append(o.Tools, t)
 	}
 }
 

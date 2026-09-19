@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/tool"
 )
 
 // RunFunc declares the abstract entrypoint for nodes (ex: llm, middleware) in the agent.
@@ -13,6 +14,7 @@ type RunFunc = func(ctx context.Context, messages []*llm.Message, options *llm.G
 type Config struct {
 	Name        string
 	Middlewares []Middleware
+	Tools       []tool.Tool
 }
 
 type Agent struct {
@@ -33,8 +35,13 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 		history:     NewHistoryProvider(),
 	}
 
-	middlewares := append(
-		cfg.Middlewares,
+	middlewares := cfg.Middlewares
+	if len(cfg.Tools) > 0 {
+		middlewares = append(middlewares, NewAutoCallMiddleware(cfg.Tools))
+	}
+
+	middlewares = append(
+		middlewares,
 		NewHistoryMiddleware(a.history),
 		NewStructuredOutputMiddleware(),
 		NewLoggerMiddleware(a.logger),

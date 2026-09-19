@@ -12,6 +12,9 @@ const (
 	// ContentKindData is used to store binary and non-binary data, which depends on the media type.
 	// Ex: an image file, a text file, etc.
 	ContentKindData ContentKind = "data"
+
+	ContentKindToolCall   ContentKind = "tool_call"
+	ContentKindToolResult ContentKind = "tool_result"
 )
 
 type MediaType string
@@ -89,6 +92,68 @@ func (u *UsageContent) MarshalJSON() ([]byte, error) {
 	}{
 		alias: (*alias)(u),
 		Type:  u.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
+type ToolCallContent struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+func NewToolCallContent(id, name, arguments string) *ToolCallContent {
+	return &ToolCallContent{
+		ID:        id,
+		Name:      name,
+		Arguments: arguments,
+	}
+}
+
+func (t ToolCallContent) Kind() ContentKind {
+	return ContentKindToolCall
+}
+
+func (t *ToolCallContent) MarshalJSON() ([]byte, error) {
+	type alias ToolCallContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(t),
+		Type:  t.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
+type ToolResultContent struct {
+	ToolCallID string `json:"tool_call_id"`
+	Name       string `json:"name,omitzero"`
+	Result     string `json:"result"`
+	IsError    bool   `json:"is_error,omitzero"`
+}
+
+func NewToolResultContent(toolCallID, name, result string, isError bool) *ToolResultContent {
+	return &ToolResultContent{
+		ToolCallID: toolCallID,
+		Name:       name,
+		Result:     result,
+		IsError:    isError,
+	}
+}
+
+func (t ToolResultContent) Kind() ContentKind {
+	return ContentKindToolResult
+}
+
+func (t *ToolResultContent) MarshalJSON() ([]byte, error) {
+	type alias ToolResultContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(t),
+		Type:  t.Kind(),
 	}
 	return json.Marshal(tmp)
 }
