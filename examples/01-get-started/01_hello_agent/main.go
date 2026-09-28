@@ -7,10 +7,14 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/internal/observability"
 )
 
 func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
+	ctx := context.Background()
+	tp, _ := observability.NewTracerProvider(ctx)
+	defer tp.Shutdown(ctx)
 
 	a := agent.NewAgent(&agent.Config{
 		Name: "hello-world",
@@ -21,7 +25,7 @@ func main() {
 		Model:        "gpt-4.1-nano",
 	})
 
-	for chunk, err := range a.RunText(context.Background(), "Hi") {
+	for chunk, err := range a.RunText(ctx, "Hi") {
 		if err != nil {
 			slog.Error("something wrong", "err", err)
 			return

@@ -29,6 +29,9 @@ const (
 )
 
 type ResponseChunk struct {
+	// ID is the unique identifier of the message, not only the chunk. It means
+	// that all chunks of the same message share the same ID.
+	ID           string            `json:"id"`
 	Type         ResponseChunkType `json:"type"`
 	FinishReason string            `json:"finish_reason,omitzero"`
 	Role         Role              `json:"role,omitzero"`

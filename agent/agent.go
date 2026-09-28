@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"uuid"
 
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/tool"
 )
+
+type CtxKeyMessageID struct{}
 
 // RunFunc declares the abstract entrypoint for nodes (ex: llm, middleware) in the agent.
 type RunFunc = func(ctx context.Context, messages []*llm.Message, options *llm.GenOptions) llm.ResponseStream
@@ -45,14 +48,31 @@ func NewAgent(cfg *Config, providerOptions *llm.ProviderOptions) *Agent {
 		NewHistoryMiddleware(a.history),
 		NewStructuredOutputMiddleware(),
 		NewLoggerMiddleware(a.logger),
+		NewTraceMiddleware(cfg.Name),
 	)
-	a.run = compileRunChain(a.invoke, middlewares)
+	// history::run
+	//   -> structured_output::run
+	//     -> logger::run
+	//       -> trace::run
+	//          -> llm::gen
+	//          <- llm::chunk
+	//       <- trace::next
+	//     <- logger::next
+	//   <- structured_output::next
+	// <- history::next
+	chain := compileRunChain(a.invoke, middlewares)
+	a.run = func(ctx context.Context, messages []*llm.Message, options *llm.GenOptions) llm.ResponseStream {
+		ctx, messages, options = a.beforeRun(ctx, messages, options)
+		return chain(ctx, messages, options)
+	}
+
 	return a
 }
 
 func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 	return a.run(ctx, []*llm.Message{
 		{
+			ID:   uuid.New().String(),
 			Role: llm.RoleUser,
 			Contents: llm.MessageContents{
 				llm.NewTextContent(text),
@@ -63,16 +83,11 @@ func (a *Agent) RunText(ctx context.Context, text string) llm.ResponseStream {
 
 func (a *Agent) Run(
 	ctx context.Context,
-	messages []llm.MessageContent,
+	messages []*llm.Message,
 	options ...llm.WithGenOption,
 ) llm.ResponseStream {
 	opts := llm.ApplyGenOptions(options)
-	return a.run(ctx, []*llm.Message{
-		{
-			Role:     llm.RoleUser,
-			Contents: messages,
-		},
-	}, opts)
+	return a.run(ctx, messages, opts)
 }
 
 func (a *Agent) invoke(
@@ -81,4 +96,14 @@ func (a *Agent) invoke(
 	options *llm.GenOptions,
 ) llm.ResponseStream {
 	return a.llmProvider.Gen(ctx, messages, options)
+}
+
+func (a *Agent) beforeRun(
+	ctx context.Context,
+	messages []*llm.Message,
+	options *llm.GenOptions,
+) (context.Context, []*llm.Message, *llm.GenOptions) {
+	ctx = context.WithValue(ctx, CtxKeyMessageID{}, uuid.New().String())
+	options = llm.WithDefaultOptions(options)
+	return ctx, messages, options
 }

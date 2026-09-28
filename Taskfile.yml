@@ -1,0 +1,17 @@
+version: "3"
+
+vars:
+  BINARY_NAME: apiserver
+  BUILD_DIR: bin
+
+tasks:
+  apiserver:
+    desc: Build apiserver binary.
+    cmds:
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} ./cmd/apiserver
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"

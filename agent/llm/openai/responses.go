@@ -162,6 +162,11 @@ func (p *Provider) getStreaming(
 ) *ssestream.Stream[responses.ResponseStreamEventUnion] {
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := p.client.Do(req)
+	if err != nil {
+		p.logger.Error("failed to send generation request", "err", err)
+		return ssestream.NewStream[responses.ResponseStreamEventUnion](nil, err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		p.logger.Error(

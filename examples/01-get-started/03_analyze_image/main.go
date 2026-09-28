@@ -29,9 +29,21 @@ func main() {
 
 	for chunk, err := range a.Run(
 		context.Background(),
-		[]llm.MessageContent{
-			llm.NewTextContent("what's in this image?"),
-			llm.NewDataContent(llm.MediaTypeImageJPG, imageData),
+		[]*llm.Message{
+			{
+				ID:   "0",
+				Role: llm.RoleUser,
+				Contents: llm.MessageContents{
+					llm.NewTextContent("what's in this image?"),
+				},
+			},
+			{
+				ID:   "1",
+				Role: llm.RoleUser,
+				Contents: llm.MessageContents{
+					llm.NewDataContent(llm.MediaTypeImageJPG, imageData),
+				},
+			},
 		},
 	) {
 		if err != nil {

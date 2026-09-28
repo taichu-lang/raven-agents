@@ -174,7 +174,7 @@ func inputContentFromUser(
 		return append(inputs, InputMessageContent{
 			Type: InputTypeUserText,
 			InputText: &InputText{
-				Text: c.Raw(),
+				Text: c.Text,
 			},
 		})
 
@@ -205,7 +205,7 @@ func inputContentFromAssistant(
 		return append(inputs, InputMessageContent{
 			Type: InputTypeAssistant,
 			InputText: &InputText{
-				Text: c.Raw(),
+				Text: c.Text,
 			},
 		})
 

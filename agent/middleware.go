@@ -93,9 +93,14 @@ func (hm *HistoryMiddleware) Run(
 	messages []*llm.Message,
 	options *llm.GenOptions,
 ) llm.ResponseStream {
+	messageID, _ := ctx.Value(CtxKeyMessageID{}).(string)
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		messages, _ = hm.history.Retrieve(ctx, messages)
 		for chunk, err := range next(ctx, messages, options) {
+			if chunk != nil {
+				chunk.ID = messageID
+			}
+
 			if err == nil && chunk.Type == llm.ResponseChunkTypeFinal {
 				// TODO(Leo): handle error.
 				_ = hm.history.Store(ctx, &llm.Message{
@@ -127,9 +132,11 @@ func (s *StructuredOutputMiddleware) Run(
 	return func(yield func(*llm.ResponseChunk, error) bool) {
 		for chunk, err := range next(ctx, messages, options) {
 			// chunk might be nil if has error.
-			if err == nil && chunk.Type == llm.ResponseChunkTypeFinal && options.OutputFormat != nil {
-				if formatErr := validateStructuredOutput(options.OutputFormat, chunk.Contents); formatErr != nil {
-					err = fmt.Errorf("non structured output: %w", formatErr)
+			if options != nil && options.OutputFormat != nil {
+				if err == nil && chunk.Type == llm.ResponseChunkTypeFinal {
+					if formatErr := validateStructuredOutput(options.OutputFormat, chunk.Contents); formatErr != nil {
+						err = fmt.Errorf("non structured output: %w", formatErr)
+					}
 				}
 			}
 

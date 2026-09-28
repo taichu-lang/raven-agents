@@ -32,3 +32,5 @@ go.work.sum
 # .vscode/
 .marscode/
 examples/hello
+.task/
+bin/

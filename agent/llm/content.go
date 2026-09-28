@@ -59,10 +59,6 @@ func (t *TextContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-func (t *TextContent) Raw() string {
-	return t.Text
-}
-
 type URIContent struct {
 	MediaType MediaType
 	URI       string
@@ -88,7 +84,7 @@ func (u *UsageContent) MarshalJSON() ([]byte, error) {
 	type alias UsageContent
 	tmp := struct {
 		*alias
-		Type ContentKind
+		Type ContentKind `json:"type"`
 	}{
 		alias: (*alias)(u),
 		Type:  u.Kind(),

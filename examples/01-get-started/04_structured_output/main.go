@@ -29,8 +29,14 @@ func main() {
 
 	for chunk, err := range a.Run(
 		context.Background(),
-		[]llm.MessageContent{
-			llm.NewTextContent("The quick brown fox jumps over the lazy dog with piercing blue eyes"),
+		[]*llm.Message{
+			{
+				ID:   "0",
+				Role: llm.RoleUser,
+				Contents: llm.MessageContents{
+					llm.NewTextContent("The quick brown fox jumps over the lazy dog with piercing blue eyes"),
+				},
+			},
 		},
 		llm.WithOutputFormat[Entities](),
 	) {
