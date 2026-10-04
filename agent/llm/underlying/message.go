@@ -1,4 +1,6 @@
-package llm
+package underlying
+
+import "strings"
 
 type MessageContents []MessageContent
 
@@ -36,4 +38,15 @@ type ResponseChunk struct {
 	FinishReason string            `json:"finish_reason,omitzero"`
 	Role         Role              `json:"role,omitzero"`
 	Contents     MessageContents   `json:"contents,omitzero"`
+}
+
+func (c MessageContents) CollectText() string {
+	sb := strings.Builder{}
+	for _, content := range c {
+		if textContent, ok := content.(*TextContent); ok {
+			sb.WriteString(textContent.Text)
+		}
+	}
+
+	return sb.String()
 }

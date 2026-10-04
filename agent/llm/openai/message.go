@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
 type Role string
@@ -107,9 +107,9 @@ type ResponsesParams struct {
 	Tools           []Tool           `json:"tools,omitzero"`
 }
 
-func inputItemsFromMessage(message *llm.Message) []*InputItemUnion {
+func inputItemsFromMessage(message *underlying.Message) []*InputItemUnion {
 	switch message.Role {
-	case llm.RoleUser:
+	case underlying.RoleUser:
 		input := &InputItemUnion{
 			InputMessage: &InputMessage{
 				Role:    RoleUser,
@@ -122,10 +122,10 @@ func inputItemsFromMessage(message *llm.Message) []*InputItemUnion {
 
 		return []*InputItemUnion{input}
 
-	case llm.RoleAssistant:
+	case underlying.RoleAssistant:
 		return inputItemsFromAssistant(message.Contents)
 
-	case llm.RoleTool:
+	case underlying.RoleTool:
 		return inputItemsFromTool(message.Contents)
 
 	default:
@@ -133,12 +133,12 @@ func inputItemsFromMessage(message *llm.Message) []*InputItemUnion {
 	}
 }
 
-func inputItemsFromAssistant(contents llm.MessageContents) []*InputItemUnion {
+func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUnion {
 	items := make([]*InputItemUnion, 0, len(contents))
 	chatContent := make([]InputMessageContent, 0, len(contents))
 
 	for _, mc := range contents {
-		if call, ok := mc.(*llm.ToolCallContent); ok {
+		if call, ok := mc.(*underlying.ToolCallContent); ok {
 			items = append(items, &InputItemUnion{
 				FunctionCall: &FunctionCall{
 					Type:      CallTypeFunction,
@@ -166,11 +166,11 @@ func inputItemsFromAssistant(contents llm.MessageContents) []*InputItemUnion {
 }
 
 func inputContentFromUser(
-	content llm.MessageContent,
+	content underlying.MessageContent,
 	inputs []InputMessageContent,
 ) []InputMessageContent {
 	switch c := content.(type) {
-	case *llm.TextContent:
+	case *underlying.TextContent:
 		return append(inputs, InputMessageContent{
 			Type: InputTypeUserText,
 			InputText: &InputText{
@@ -178,7 +178,7 @@ func inputContentFromUser(
 			},
 		})
 
-	case *llm.DataContent:
+	case *underlying.DataContent:
 		if c.MediaType.Image() {
 			encodedData := base64.StdEncoding.EncodeToString(c.Data)
 			return append(inputs, InputMessageContent{
@@ -197,11 +197,11 @@ func inputContentFromUser(
 }
 
 func inputContentFromAssistant(
-	content llm.MessageContent,
+	content underlying.MessageContent,
 	inputs []InputMessageContent,
 ) []InputMessageContent {
 	switch c := content.(type) {
-	case *llm.TextContent:
+	case *underlying.TextContent:
 		return append(inputs, InputMessageContent{
 			Type: InputTypeAssistant,
 			InputText: &InputText{

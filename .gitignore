@@ -34,3 +34,4 @@ go.work.sum
 examples/hello
 .task/
 bin/
+configs/config.yml

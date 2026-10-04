@@ -5,24 +5,24 @@ import (
 	"os"
 	"testing"
 
-	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
 func TestGen(t *testing.T) {
-	p := NewProvider(&llm.ProviderOptions{
+	p := NewProvider(&underlying.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
 		Model:    "gpt-4.1-nano",
 	})
 
-	iter := p.Gen(context.Background(), []*llm.Message{
+	iter := p.Gen(context.Background(), []*underlying.Message{
 		{
-			Role: llm.RoleUser,
-			Contents: llm.MessageContents{
-				llm.NewTextContent("1 + 1 = ?"),
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("1 + 1 = ?"),
 			},
 		},
-	}, &llm.GenOptions{Stream: false})
+	}, &underlying.GenOptions{Stream: false})
 
 	for chunk, err := range iter {
 		if err != nil {
@@ -34,17 +34,17 @@ func TestGen(t *testing.T) {
 }
 
 func TestGenStream(t *testing.T) {
-	p := NewProvider(&llm.ProviderOptions{
+	p := NewProvider(&underlying.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
 		Model:    "gpt-4.1-nano",
 	})
 
-	iter := p.Gen(context.Background(), []*llm.Message{
+	iter := p.Gen(context.Background(), []*underlying.Message{
 		{
-			Role: llm.RoleUser,
-			Contents: llm.MessageContents{
-				llm.NewTextContent("hi"),
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("hi"),
 			},
 		},
 	}, nil)
@@ -69,21 +69,21 @@ type MathReasoning struct {
 }
 
 func TestStructuredOutput(t *testing.T) {
-	p := NewProvider(&llm.ProviderOptions{
+	p := NewProvider(&underlying.ProviderOptions{
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
 		Endpoint:     os.Getenv("OPENAI_API"),
 		Model:        "gpt-6-astra",
 		Instructions: "You are a helpful math tutor. Guide the user through the solution step by step.",
 	})
 
-	response := p.Gen(context.Background(), []*llm.Message{
+	response := p.Gen(context.Background(), []*underlying.Message{
 		{
-			Role: llm.RoleUser,
-			Contents: llm.MessageContents{
-				llm.NewTextContent("how can I solve 8x + 7 = -23"),
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("how can I solve 8x + 7 = -23"),
 			},
 		},
-	}, llm.ApplyGenOptions([]llm.WithGenOption{llm.WithStream(true), llm.WithOutputFormat[MathReasoning]()}))
+	}, underlying.ApplyGenOptions([]underlying.WithGenOption{underlying.WithStream(true), underlying.WithOutputFormat[MathReasoning]()}))
 
 	for chunk, err := range response {
 		if err != nil {

@@ -7,14 +7,13 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
 func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 
-	a := agent.NewAgent(&agent.Config{
-		Name: "analyze-image",
-	}, &llm.ProviderOptions{
+	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
 		Model:    "gpt-6-astra",
@@ -27,21 +26,21 @@ func main() {
 		return
 	}
 
-	for chunk, err := range a.Run(
+	for chunk, err := range model.Run(
 		context.Background(),
-		[]*llm.Message{
+		[]*underlying.Message{
 			{
 				ID:   "0",
-				Role: llm.RoleUser,
-				Contents: llm.MessageContents{
-					llm.NewTextContent("what's in this image?"),
+				Role: underlying.RoleUser,
+				Contents: underlying.MessageContents{
+					underlying.NewTextContent("what's in this image?"),
 				},
 			},
 			{
 				ID:   "1",
-				Role: llm.RoleUser,
-				Contents: llm.MessageContents{
-					llm.NewDataContent(llm.MediaTypeImageJPG, imageData),
+				Role: underlying.RoleUser,
+				Contents: underlying.MessageContents{
+					underlying.NewDataContent(underlying.MediaTypeImageJPG, imageData),
 				},
 			},
 		},

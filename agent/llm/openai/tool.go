@@ -2,7 +2,7 @@ package openai
 
 import (
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/tool"
 )
 
@@ -63,10 +63,10 @@ func toolDefinitionsFromOptions(tools []tool.Tool) []Tool {
 	return defs
 }
 
-func inputItemsFromTool(contents llm.MessageContents) []*InputItemUnion {
+func inputItemsFromTool(contents underlying.MessageContents) []*InputItemUnion {
 	items := make([]*InputItemUnion, 0, len(contents))
 	for _, mc := range contents {
-		result, ok := mc.(*llm.ToolResultContent)
+		result, ok := mc.(*underlying.ToolResultContent)
 		if !ok {
 			panic("unsupported message content")
 		}

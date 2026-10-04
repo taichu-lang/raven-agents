@@ -8,5 +8,6 @@ type Request struct {
 }
 
 type MessageMetadata struct {
-	ID string `json:"id"`
+	MessageID   string `json:"message_id"`
+	AssistantID string `json:"assistant_id"`
 }

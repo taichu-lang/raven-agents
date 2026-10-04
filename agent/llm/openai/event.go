@@ -2,13 +2,13 @@ package openai
 
 import (
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
 func responsesFinishReason(resp *responses.Response) string {
 	switch resp.Status {
 	case responses.ResponseStatusCompleted:
-		return llm.FinishReasonDone
+		return underlying.FinishReasonDone
 	case responses.ResponseStatusIncomplete:
 		return resp.IncompleteDetails.Reason
 	default:
@@ -16,21 +16,21 @@ func responsesFinishReason(resp *responses.Response) string {
 	}
 }
 
-func streamEventToResponse(event responses.ResponseStreamEventUnion) (*llm.ResponseChunk, error) {
+func streamEventToResponse(event responses.ResponseStreamEventUnion) (*underlying.ResponseChunk, error) {
 	switch e := event.AsAny().(type) {
 	case responses.ResponseTextDeltaEvent:
-		return &llm.ResponseChunk{
-			Type:     llm.ResponseChunkTypeDelta,
-			Role:     llm.RoleAssistant,
-			Contents: llm.MessageContents{llm.NewTextContent(e.Delta)},
+		return &underlying.ResponseChunk{
+			Type:     underlying.ResponseChunkTypeDelta,
+			Role:     underlying.RoleAssistant,
+			Contents: underlying.MessageContents{underlying.NewTextContent(e.Delta)},
 		}, nil
 
 	case responses.ResponseOutputItemDoneEvent:
 		// TODO(Leo): handle annotations.
-		chunk := &llm.ResponseChunk{
-			Type:         llm.ResponseChunkTypeFinal,
-			Role:         llm.RoleAssistant,
-			FinishReason: llm.FinishReasonDone,
+		chunk := &underlying.ResponseChunk{
+			Type:         underlying.ResponseChunkTypeFinal,
+			Role:         underlying.RoleAssistant,
+			FinishReason: underlying.FinishReasonDone,
 		}
 		if msg, ok := e.Item.AsAny().(responses.ResponseOutputMessage); ok {
 			chunk.Contents = responsesToMessageContents(msg.Content, chunk.Contents)
@@ -38,18 +38,18 @@ func streamEventToResponse(event responses.ResponseStreamEventUnion) (*llm.Respo
 		}
 
 		if call, ok := e.Item.AsAny().(responses.ResponseFunctionToolCall); ok {
-			chunk.Contents = llm.MessageContents{llm.NewToolCallContent(call.CallID, call.Name, call.Arguments)}
+			chunk.Contents = underlying.MessageContents{underlying.NewToolCallContent(call.CallID, call.Name, call.Arguments)}
 			return chunk, nil
 		}
 
 	case responses.ResponseCompletedEvent:
-		chunk := &llm.ResponseChunk{
-			Type:         llm.ResponseChunkTypeUsage,
-			Role:         llm.RoleAssistant,
+		chunk := &underlying.ResponseChunk{
+			Type:         underlying.ResponseChunkTypeUsage,
+			Role:         underlying.RoleAssistant,
 			FinishReason: responsesFinishReason(&e.Response),
 		}
 		if usage := toUsageContent(e.Response.Usage); usage != nil {
-			chunk.Contents = llm.MessageContents{usage}
+			chunk.Contents = underlying.MessageContents{usage}
 			return chunk, nil
 		}
 	}
@@ -59,12 +59,12 @@ func streamEventToResponse(event responses.ResponseStreamEventUnion) (*llm.Respo
 
 func responsesToMessageContents(
 	outputs []responses.ResponseOutputMessageContentUnion,
-	contents llm.MessageContents,
-) llm.MessageContents {
+	contents underlying.MessageContents,
+) underlying.MessageContents {
 	for _, c := range outputs {
 		switch c := c.AsAny().(type) {
 		case responses.ResponseOutputText:
-			text := llm.NewTextContent(c.Text)
+			text := underlying.NewTextContent(c.Text)
 			contents = append(contents, text)
 		}
 	}
@@ -72,12 +72,12 @@ func responsesToMessageContents(
 	return contents
 }
 
-func toUsageContent(usage responses.ResponseUsage) *llm.UsageContent {
+func toUsageContent(usage responses.ResponseUsage) *underlying.UsageContent {
 	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
 		return nil
 	}
 
-	return &llm.UsageContent{
+	return &underlying.UsageContent{
 		InputTokenCount:       usage.InputTokens,
 		OutputTokenCount:      usage.OutputTokens,
 		TotalTokenCount:       usage.TotalTokens,

@@ -8,7 +8,9 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
-	"github.com/taichu-lang/raven-agents/tool"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/internal/observability"
 	"github.com/taichu-lang/raven-agents/tool/functool"
 )
 
@@ -20,6 +22,9 @@ type ReportRequest struct {
 
 func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
+	ctx := context.Background()
+	tp, _ := observability.NewTracerProvider(ctx)
+	defer tp.Shutdown(ctx)
 
 	getWeather, err := functool.New(functool.Config{
 		Name:        "weather",
@@ -45,10 +50,7 @@ func main() {
 		return
 	}
 
-	a := agent.NewAgent(&agent.Config{
-		Name:  "function-call",
-		Tools: []tool.Tool{getWeather, travel},
-	}, &llm.ProviderOptions{
+	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
 		Instructions: `
@@ -63,13 +65,24 @@ Important: Only call the tool needed at each step, and wait for the result befor
 		Model: "gpt-4.1-nano",
 	})
 
-	for chunk, err := range a.RunText(context.Background(), "i want to travel to Shanghai") {
-		if err != nil {
-			slog.Error("something wrong", "err", err)
-			return
-		}
+	registry := agent.NewToolRegistry()
+	registry.Register(getWeather, nil)
+	registry.Register(travel, nil)
 
-		for range chunk.Contents {
-		}
-	}
+	bus := event.NewMemoryBus()
+	handle, _ := bus.Subscribe(func(event *event.Event) {
+		slog.Debug("on event", "source", event.Source, "name", event.Name, "payload", event.Payload)
+	})
+	defer bus.Unsubscribe(handle)
+
+	a := agent.New(bus, model, registry)
+	a.Run(ctx, "gpt-4.1-nano", []*underlying.Message{
+		{
+			ID:   "1",
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("i want to travel to Shanghai"),
+			},
+		},
+	})
 }

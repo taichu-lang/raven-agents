@@ -7,31 +7,52 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
 func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 
-	a := agent.NewAgent(&agent.Config{
-		Name: "multi-turn",
-	}, &llm.ProviderOptions{
+	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
 		Endpoint:     os.Getenv("OPENAI_API"),
 		Instructions: "You are a helpful assistant!",
 		Model:        "gpt-4.1-nano",
 	})
 
-	for chunk, err := range a.RunText(context.Background(), "I am leo") {
+	messages := make([]*underlying.Message, 0, 1)
+	messages = append(messages, &underlying.Message{
+		ID:   "0",
+		Role: underlying.RoleUser,
+		Contents: underlying.MessageContents{
+			underlying.NewTextContent("I am leo"),
+		},
+	})
+
+	for chunk, err := range model.Run(context.Background(), messages) {
 		if err != nil {
 			slog.Error("something wrong", "err", err)
 			return
 		}
 
-		for range chunk.Contents {
+		if chunk.Type == underlying.ResponseChunkTypeFinal {
+			messages = append(messages, &underlying.Message{
+				ID:       chunk.ID,
+				Role:     chunk.Role,
+				Contents: chunk.Contents,
+			})
 		}
 	}
 
-	for chunk, err := range a.RunText(context.Background(), "Who am i?") {
+	messages = append(messages, &underlying.Message{
+		ID:   "1",
+		Role: underlying.RoleUser,
+		Contents: underlying.MessageContents{
+			underlying.NewTextContent("Who am i?"),
+		},
+	})
+
+	for chunk, err := range model.Run(context.Background(), messages) {
 		if err != nil {
 			slog.Error("something wrong", "err", err)
 			return

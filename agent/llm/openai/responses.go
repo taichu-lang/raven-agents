@@ -11,17 +11,17 @@ import (
 
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/taichu-lang/raven-agents/agent/llm"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/util"
 )
 
 type Provider struct {
 	client  *http.Client
-	options *llm.ProviderOptions
+	options *underlying.ProviderOptions
 	logger  *slog.Logger
 }
 
-func NewProvider(options *llm.ProviderOptions) llm.Provider {
+func NewProvider(options *underlying.ProviderOptions) underlying.Provider {
 	return &Provider{
 		client:  util.NewStreamClient(),
 		options: options,
@@ -31,11 +31,11 @@ func NewProvider(options *llm.ProviderOptions) llm.Provider {
 
 func (p *Provider) Gen(
 	ctx context.Context,
-	messages []*llm.Message,
-	options *llm.GenOptions,
-) llm.ResponseStream {
-	return func(yield func(*llm.ResponseChunk, error) bool) {
-		opts := llm.WithDefaultOptions(options)
+	messages []*underlying.Message,
+	options *underlying.GenOptions,
+) underlying.ResponseStream {
+	return func(yield func(*underlying.ResponseChunk, error) bool) {
+		opts := underlying.WithDefaultOptions(options)
 		params := p.newResponsesParams(p.options.Model, messages, opts)
 		body, err := json.Marshal(params)
 		if err != nil {
@@ -101,28 +101,28 @@ func (p *Provider) Gen(
 			for _, out := range response.Output {
 				switch out := out.AsAny().(type) {
 				case responses.ResponseOutputMessage:
-					chunk := &llm.ResponseChunk{
-						Type: llm.ResponseChunkTypeFinal,
-						Role: llm.RoleAssistant,
+					chunk := &underlying.ResponseChunk{
+						Type: underlying.ResponseChunkTypeFinal,
+						Role: underlying.RoleAssistant,
 					}
 					chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
 					yield(chunk, nil)
 
 				case responses.ResponseFunctionToolCall:
-					yield(&llm.ResponseChunk{
-						Type:     llm.ResponseChunkTypeFinal,
-						Role:     llm.RoleAssistant,
-						Contents: llm.MessageContents{llm.NewToolCallContent(out.CallID, out.Name, out.Arguments)},
+					yield(&underlying.ResponseChunk{
+						Type:     underlying.ResponseChunkTypeFinal,
+						Role:     underlying.RoleAssistant,
+						Contents: underlying.MessageContents{underlying.NewToolCallContent(out.CallID, out.Name, out.Arguments)},
 					}, nil)
 				}
 			}
 
 			// TODO(Leo): event order, can usage event before final event for all providers ?
 			if usage := toUsageContent(response.Usage); usage != nil {
-				yield(&llm.ResponseChunk{
-					Type:     llm.ResponseChunkTypeUsage,
-					Role:     llm.RoleAssistant,
-					Contents: llm.MessageContents{usage},
+				yield(&underlying.ResponseChunk{
+					Type:     underlying.ResponseChunkTypeUsage,
+					Role:     underlying.RoleAssistant,
+					Contents: underlying.MessageContents{usage},
 				}, nil)
 			}
 
@@ -184,8 +184,8 @@ func (p *Provider) getStreaming(
 
 func (p *Provider) newResponsesParams(
 	model string,
-	messages []*llm.Message,
-	options *llm.GenOptions,
+	messages []*underlying.Message,
+	options *underlying.GenOptions,
 ) *ResponsesParams {
 	params := &ResponsesParams{
 		Model:        model,
