@@ -5,10 +5,12 @@ import "github.com/taichu-lang/raven-agents/agent/llm/underlying"
 type SourceType string
 
 const (
-	SourceTypeAgent       SourceType = "agent"
-	SourceTypeUser        SourceType = "user"
-	SourceTypeEnvironment SourceType = "environment"
-	SourceTypeHook        SourceType = "hook"
+	// SourceTypeAgent are events from agent, ex: llm assistant output.
+	SourceTypeAgent SourceType = "agent"
+	// SourceTypeUser are events from user, ex: llm user input.
+	SourceTypeUser SourceType = "user"
+	// SourceTypeRuntime are events from runtime system, ex: notification, human-in-the-loop.
+	SourceTypeRuntime SourceType = "runtime"
 )
 
 type EventName string
@@ -21,6 +23,8 @@ const (
 	EventLLMDelta       EventName = "llm.delta"
 	EventLLMComplete    EventName = "llm.complete"
 	EventLLMError       EventName = "llm.error"
+	EventHumanApproval  EventName = "runtime.hitl"
+	EventRuntimeError   EventName = "runtime.error"
 )
 
 type Event struct {

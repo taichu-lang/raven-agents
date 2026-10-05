@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"uuid"
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
@@ -17,24 +18,32 @@ func main() {
 	tp, _ := observability.NewTracerProvider(ctx)
 	defer tp.Shutdown(ctx)
 
-	bus := event.NewMemoryBus()
+	firstReceived := make(chan struct{}, 1)
+	done := make(chan struct{}, 1)
 
+	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
 	defer bus.Unsubscribe(subscription.ID)
 
-	done := make(chan struct{}, 1)
-
 	go func() {
+		count := 0
 		for e := range subscription.Channel {
-			slog.Debug("on event", "source", e.Source, "name", e.Name, "payload", e.Payload)
 			if e.Name == event.EventLLMComplete {
-				done <- struct{}{}
+				count++
+				slog.Info("assistant message is accepted", "message", e.Payload)
+				if count == 1 {
+					firstReceived <- struct{}{}
+				}
+
+				if count == 2 {
+					done <- struct{}{}
+				}
 			}
 		}
 	}()
 
 	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
-		Name: "hello-harness",
+		Name: "multi-turn",
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("OPENAI_APIKEY"),
 			Endpoint:     os.Getenv("OPENAI_API"),
@@ -42,15 +51,31 @@ func main() {
 			Model:        "gpt-4.1-nano",
 		},
 	})
-	a.Run(ctx, []*underlying.Message{
+	if err := a.Run(ctx, []*underlying.Message{
 		{
-			ID:   "1",
+			ID:   uuid.New().String(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
-				underlying.NewTextContent("hi"),
+				underlying.NewTextContent("Hi, i am leo"),
 			},
 		},
-	})
+	}); err != nil {
+		panic(err)
+	}
+
+	<-firstReceived
+	if err := a.Run(ctx, []*underlying.Message{
+		{
+			ID:   uuid.New().String(),
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("Who am i?"),
+			},
+		},
+	}); err != nil {
+		panic(err)
+	}
+
 	<-done
 
 	a.Shutdown(ctx)

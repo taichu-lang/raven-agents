@@ -16,42 +16,51 @@ func responsesFinishReason(resp *responses.Response) string {
 	}
 }
 
-func streamEventToResponse(event responses.ResponseStreamEventUnion) (*underlying.ResponseChunk, error) {
+// streamEventToResponse parses the stream event, returns `usage` (if exists), chunk.
+func streamEventToResponse(
+	event responses.ResponseStreamEventUnion,
+) (*underlying.ResponseChunk, *underlying.ResponseChunk) {
 	switch e := event.AsAny().(type) {
 	case responses.ResponseTextDeltaEvent:
-		return &underlying.ResponseChunk{
+		return nil, &underlying.ResponseChunk{
+			ID:       e.ItemID,
 			Type:     underlying.ResponseChunkTypeDelta,
 			Role:     underlying.RoleAssistant,
 			Contents: underlying.MessageContents{underlying.NewTextContent(e.Delta)},
-		}, nil
+		}
 
 	case responses.ResponseOutputItemDoneEvent:
-		// TODO(Leo): handle annotations.
-		chunk := &underlying.ResponseChunk{
-			Type:         underlying.ResponseChunkTypeFinal,
-			Role:         underlying.RoleAssistant,
-			FinishReason: underlying.FinishReasonDone,
-		}
-		if msg, ok := e.Item.AsAny().(responses.ResponseOutputMessage); ok {
-			chunk.Contents = responsesToMessageContents(msg.Content, chunk.Contents)
-			return chunk, nil
-		}
-
-		if call, ok := e.Item.AsAny().(responses.ResponseFunctionToolCall); ok {
-			chunk.Contents = underlying.MessageContents{underlying.NewToolCallContent(call.CallID, call.Name, call.Arguments)}
-			return chunk, nil
-		}
+		// One item is completed, no usage.
 
 	case responses.ResponseCompletedEvent:
+		// TODO(Leo): handle annotations.
 		chunk := &underlying.ResponseChunk{
-			Type:         underlying.ResponseChunkTypeUsage,
+			ID:           e.Response.ID,
+			Type:         underlying.ResponseChunkTypeFinal,
 			Role:         underlying.RoleAssistant,
 			FinishReason: responsesFinishReason(&e.Response),
 		}
-		if usage := toUsageContent(e.Response.Usage); usage != nil {
-			chunk.Contents = underlying.MessageContents{usage}
-			return chunk, nil
+		for _, output := range e.Response.Output {
+			if msg, ok := output.AsAny().(responses.ResponseOutputMessage); ok {
+				chunk.Contents = responsesToMessageContents(msg.Content, chunk.Contents)
+			}
+
+			if call, ok := output.AsAny().(responses.ResponseFunctionToolCall); ok {
+				chunk.Contents = append(chunk.Contents, underlying.NewToolCallContent(call.CallID, call.Name, call.Arguments))
+			}
 		}
+
+		// Do not append usage to the contents of message chunk, as consumers of those chunks are different.
+		if uc := toUsageContent(e.Response.Usage); uc != nil {
+			usage := &underlying.ResponseChunk{
+				Type:     underlying.ResponseChunkTypeUsage,
+				Role:     underlying.RoleAssistant,
+				Contents: underlying.MessageContents{uc},
+			}
+			return usage, chunk
+		}
+
+		return nil, chunk
 	}
 
 	return nil, nil

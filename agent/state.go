@@ -17,6 +17,12 @@ const (
 	StatusFailed          Status = "failed"
 )
 
+type PendingApproval struct {
+	ToolCall    *underlying.ToolCallContent
+	Reason      string `json:"reason,omitzero"`
+	RequestedAt time.Time
+}
+
 // AgentState represents the shared state of the agent, which can be accessed and modified by all nodes in the
 // graph. Fields in this struct are intended to be persistent, and can be resumed after a restart of the agent.
 type AgentState struct {
@@ -29,11 +35,15 @@ type AgentState struct {
 	// ToolCalls is the list of tools returned from llm, and to be called from agent.
 	ToolCalls []*underlying.ToolCallContent
 
+	// Pending is the list of actions waiting for human approval.
+	Pending []*PendingApproval
+
 	// TODO(Leo): Move those statistics to a RunContext?
 	StartedAt  time.Time
 	Iterations int64
 	TokenUsage int64
 	TokenCost  float64
+	Model      string
 }
 
 func (s *AgentState) resetPerTurn() {
@@ -43,18 +53,45 @@ func (s *AgentState) resetPerTurn() {
 	s.StartedAt = time.Now()
 }
 
-func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) {
-	s.Messages = append(s.Messages, &underlying.Message{
+func (s *AgentState) lastMessage() *underlying.Message {
+	if len(s.Messages) == 0 {
+		return nil
+	}
+
+	return s.Messages[len(s.Messages)-1]
+}
+
+func (s *AgentState) lastUserMessage() *underlying.Message {
+	if s.lastMessage() == nil {
+		return nil
+	}
+
+	idx := len(s.Messages) - 1
+	for idx >= 0 {
+		if s.Messages[idx].Role == underlying.RoleUser {
+			return s.Messages[idx]
+		}
+		idx--
+	}
+
+	return nil
+}
+
+func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) *underlying.Message {
+	assistant := &underlying.Message{
 		ID:       chunk.ID,
 		Role:     chunk.Role,
 		Contents: chunk.Contents,
-	})
+	}
+	s.Messages = append(s.Messages, assistant)
 
 	for _, content := range chunk.Contents {
 		if call, ok := content.(*underlying.ToolCallContent); ok {
 			s.ToolCalls = append(s.ToolCalls, call)
 		}
 	}
+
+	return assistant
 }
 
 const (

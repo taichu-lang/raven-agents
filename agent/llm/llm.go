@@ -82,16 +82,12 @@ func (a *Runner) beforeRun(
 }
 
 func newProvider(options *underlying.ProviderOptions) underlying.Provider {
+	if err := options.Validate(); err != nil {
+		panic(err)
+	}
+
 	if options.Protocol == "" {
 		options.Protocol = underlying.ProtocolOpenAI
-	}
-
-	if options.ApiKey == "" {
-		panic("api key is required")
-	}
-
-	if options.Endpoint == "" {
-		panic("endpoint is required")
 	}
 
 	switch options.Protocol {

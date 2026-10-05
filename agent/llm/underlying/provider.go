@@ -2,6 +2,7 @@ package underlying
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"reflect"
 
@@ -28,13 +29,25 @@ const (
 // transferable to another model. So by design, each provider instance owns
 // the `model` and `instructions`.
 type ProviderOptions struct {
-	ApiKey   string
-	Endpoint string
+	ApiKey       string `yaml:"api_key"               json:"api_key"`
+	Endpoint     string `yaml:"endpoint"              json:"endpoint"`
+	Model        string `yaml:"model"                 json:"model"`
+	Instructions string `yaml:"instructions,omitzero" json:"instructions,omitzero"`
 
 	// Default is ProtocolOpenAI.
-	Protocol     Protocol
-	Model        string
-	Instructions string
+	Protocol Protocol `yaml:"protocol,omitzero" json:"protocol,omitzero"`
+}
+
+func (p *ProviderOptions) Validate() error {
+	if p.Endpoint == "" {
+		return errors.New("endpoint is required")
+	}
+
+	if p.Model == "" {
+		return errors.New("model is required")
+	}
+
+	return nil
 }
 
 type OutputFormatOption struct {

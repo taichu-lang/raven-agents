@@ -13,8 +13,7 @@ import (
 )
 
 type TraceSubscriber struct {
-	tracer    trace.Tracer
-	iteration int64
+	tracer trace.Tracer
 
 	turnCtx  context.Context
 	turnSpan trace.Span
@@ -31,8 +30,7 @@ func NewTraceSubscriber(root string) *TraceSubscriber {
 	}
 
 	return &TraceSubscriber{
-		tracer:    tp.Tracer(root),
-		iteration: 0,
+		tracer: tp.Tracer(root),
 	}
 }
 
@@ -55,8 +53,8 @@ func (s *TraceSubscriber) OnEvent(e *event.Event) {
 		s.iterationCtx = nil
 
 	case event.EventLLMComplete:
-		messages := e.Payload.(underlying.MessageContents)
-		s.onLLMComplete(messages)
+		message := e.Payload.(*underlying.Message)
+		s.onLLMComplete(message)
 	}
 }
 
@@ -84,10 +82,9 @@ func (s *TraceSubscriber) onIterationStart(payload *event.IterationStartPayload)
 		s.iterationSpan.End()
 	}
 
-	s.iteration = payload.Iteration
 	s.iterationCtx, s.iterationSpan = s.tracer.Start(
 		s.turnCtx,
-		fmt.Sprintf("iteration.%d", s.iteration),
+		fmt.Sprintf("iteration.%d", payload.Iteration),
 	)
 	s.iterationSpan.SetAttributes(
 		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindLLM),
@@ -101,9 +98,9 @@ func (s *TraceSubscriber) onIterationStart(payload *event.IterationStartPayload)
 	}
 }
 
-func (s *TraceSubscriber) onLLMComplete(contents underlying.MessageContents) {
+func (s *TraceSubscriber) onLLMComplete(message *underlying.Message) {
 	s.iterationSpan.SetAttributes(
 		attribute.String(observability.LLMOutputMessageRoleKey(0), string(underlying.RoleAssistant)),
-		attribute.String(observability.LLMOutputMessageContentKey(0), contents.CollectText()),
+		attribute.String(observability.LLMOutputMessageContentKey(0), message.Contents.CollectText()),
 	)
 }

@@ -70,11 +70,11 @@ func (p *Provider) Gen(
 			}()
 
 			for streaming.Next() {
-				chunk, err := streamEventToResponse(streaming.Current())
-				if err != nil {
-					p.logger.Error("failed to convert stream event to response chunk", "err", err)
-					yield(nil, err)
-					return
+				usage, chunk := streamEventToResponse(streaming.Current())
+
+				// Ensure that `usage` event comes before `final` event.
+				if usage != nil {
+					yield(usage, nil)
 				}
 
 				// Discard some stream events.

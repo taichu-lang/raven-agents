@@ -24,6 +24,12 @@ type Result struct {
 	out *Output
 }
 
+func NewRegistry() *Registry {
+	return &Registry{
+		hooks: make(map[Event][]Registration),
+	}
+}
+
 func (r *Registry) Register(event Event, reg Registration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -42,6 +48,10 @@ func (r *Registry) Run(ctx context.Context, in *Input) (*Output, error) {
 		return &Output{
 			Decision: PermissionAllow,
 		}, nil
+	}
+
+	if len(regs) == 1 {
+		return regs[0].Fn(ctx, in)
 	}
 
 	results := make([]Result, 0, len(regs))

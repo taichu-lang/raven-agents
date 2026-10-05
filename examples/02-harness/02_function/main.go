@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 
 	"github.com/taichu-lang/raven-agents/agent"
-	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/internal/observability"
@@ -26,6 +26,8 @@ func main() {
 	tp, _ := observability.NewTracerProvider(ctx)
 	defer tp.Shutdown(ctx)
 
+	var travelFuncCalled atomic.Bool
+
 	getWeather, err := functool.New(functool.Config{
 		Name:        "weather",
 		Description: "Get the current weather for a given location",
@@ -42,6 +44,7 @@ func main() {
 		Name:        "travel_planning",
 		Description: "Based on local weather conditions, create a travel plan. The weather info should get from weather function tool.",
 	}, func(ctx context.Context, req ReportRequest) (string, error) {
+		travelFuncCalled.Store(true)
 		return fmt.Sprintf("Based on the weather in %s, I recommend you to stay home.", req.Location), nil
 	})
 
@@ -50,10 +53,30 @@ func main() {
 		return
 	}
 
-	model := llm.NewRunner(&underlying.ProviderOptions{
-		ApiKey:   os.Getenv("OPENAI_APIKEY"),
-		Endpoint: os.Getenv("OPENAI_API"),
-		Instructions: `
+	registry := agent.NewToolRegistry()
+	registry.Register(getWeather, nil)
+	registry.Register(travel, nil)
+
+	bus := event.NewMemoryBus()
+	subscription := bus.Subscribe()
+	defer bus.Unsubscribe(subscription.ID)
+
+	done := make(chan struct{}, 1)
+	go func() {
+		for e := range subscription.Channel {
+			slog.Debug("on event", "source", e.Source, "name", e.Name, "payload", e.Payload)
+			if e.Name == event.EventLLMComplete && travelFuncCalled.Load() {
+				done <- struct{}{}
+			}
+		}
+	}()
+
+	a := agent.New(bus, registry, &agent.AgentOptions{
+		Name: "harness-function",
+		LLM: &underlying.ProviderOptions{
+			ApiKey:   os.Getenv("OPENAI_APIKEY"),
+			Endpoint: os.Getenv("OPENAI_API"),
+			Instructions: `
 		You are a travel assistant. When users ask travel-related questions, please follow this workflow:
 
 1. First, call get_weather to obtain weather information for the destination.
@@ -62,21 +85,10 @@ func main() {
 
 Important: Only call the tool needed at each step, and wait for the result before deciding on the next action.
 		`,
-		Model: "gpt-4.1-nano",
+			Model: "gpt-4.1-nano",
+		},
 	})
-
-	registry := agent.NewToolRegistry()
-	registry.Register(getWeather, nil)
-	registry.Register(travel, nil)
-
-	bus := event.NewMemoryBus()
-	handle, _ := bus.Subscribe(func(event *event.Event) {
-		slog.Debug("on event", "source", event.Source, "name", event.Name, "payload", event.Payload)
-	})
-	defer bus.Unsubscribe(handle)
-
-	a := agent.New(bus, model, registry)
-	a.Run(ctx, "gpt-4.1-nano", []*underlying.Message{
+	a.Run(ctx, []*underlying.Message{
 		{
 			ID:   "1",
 			Role: underlying.RoleUser,
@@ -85,4 +97,7 @@ Important: Only call the tool needed at each step, and wait for the result befor
 			},
 		},
 	})
+	<-done
+
+	a.Shutdown(ctx)
 }
