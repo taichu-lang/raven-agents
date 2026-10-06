@@ -1,4 +1,4 @@
-package persistent
+package database
 
 import (
 	"context"
@@ -24,11 +24,11 @@ type SqliteConfig struct {
 	Path string `json:"path" yaml:"path"`
 }
 
-type SqliteStore struct {
+type SqliteStoreRef struct {
 	store
 }
 
-func NewSqliteStore(cfg *SqliteConfig) (*SqliteStore, error) {
+func NewSqliteStore(cfg *SqliteConfig) (*SqliteStoreRef, error) {
 	set, err := migrations.Sqlite()
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func NewSqliteStore(cfg *SqliteConfig) (*SqliteStore, error) {
 	sqldb.SetMaxIdleConns(1)
 	sqldb.SetConnMaxLifetime(0)
 
-	s := &SqliteStore{
+	s := &SqliteStoreRef{
 		db:         bun.NewDB(sqldb, sqlitedialect.New()),
 		migrations: set,
 		logger:     slog.With("store", "sqlite"),

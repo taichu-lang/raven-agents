@@ -14,9 +14,9 @@ const (
 )
 
 type Message struct {
-	ID       string
-	Role     Role
-	Contents MessageContents
+	ID       string          `json:"id"`
+	Role     Role            `json:"role"`
+	Contents MessageContents `json:"contents,omitzero"`
 }
 
 // FinishReasonDone represents that the response is completed successfully.
@@ -31,13 +31,9 @@ const (
 )
 
 type ResponseChunk struct {
-	// ID is the unique identifier of the message, not only the chunk. It means
-	// that all chunks of the same message share the same ID.
-	ID           string            `json:"id"`
+	Message
 	Type         ResponseChunkType `json:"type"`
 	FinishReason string            `json:"finish_reason,omitzero"`
-	Role         Role              `json:"role,omitzero"`
-	Contents     MessageContents   `json:"contents,omitzero"`
 }
 
 func (c MessageContents) CollectText() string {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"uuid"
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
+	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/internal/observability"
 )
@@ -50,8 +52,8 @@ func main() {
 			Instructions: "You are a helpful assistant!",
 			Model:        "gpt-4.1-nano",
 		},
-		Store: &agent.StoreConfig{
-			Postgres: &persistent.PostgresConfig{
+		Store: &database.StoreConfig{
+			Postgres: &database.PostgresConfig{
 				Address:  "localhost:46873",
 				User:     "postgres",
 				Password: "postgres",
@@ -67,7 +69,7 @@ func main() {
 		Turn:           1,
 	}), []*underlying.Message{
 		{
-			ID:   "0",
+			ID:   uuid.New().String(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Hi, i am leo"),
@@ -84,7 +86,7 @@ func main() {
 		Turn:           2,
 	}), []*underlying.Message{
 		{
-			ID:   "0",
+			ID:   uuid.New().String(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Who am i?"),

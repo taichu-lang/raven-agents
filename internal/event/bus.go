@@ -1,6 +1,9 @@
 package event
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type Subscription struct {
 	ID      uintptr
@@ -9,7 +12,7 @@ type Subscription struct {
 
 type Bus interface {
 	Subscribe() *Subscription
-	Emit(event *Event) error
+	Emit(ctx context.Context, event *Event) error
 	Unsubscribe(id uintptr) error
 }
 
@@ -39,11 +42,20 @@ func (b *MemoryBus) Subscribe() *Subscription {
 	return s
 }
 
-func (b *MemoryBus) Emit(event *Event) error {
+// Emit blocks while a subscriber is too slow to keep up, which pushes back on the producer instead
+// of growing the buffer without bound. A channel send cannot be interrupted on its own, so the send
+// also watches ctx: once the producer's context is done, the delivery is abandoned rather than
+// parking the producer forever on a subscriber that has walked away, such as a disconnected HTTP
+// stream.
+func (b *MemoryBus) Emit(ctx context.Context, event *Event) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, s := range b.subscriptions {
-		s.Channel <- event
+		select {
+		case s.Channel <- event:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	return nil

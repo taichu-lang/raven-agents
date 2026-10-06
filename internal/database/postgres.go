@@ -1,4 +1,4 @@
-package persistent
+package database
 
 import (
 	"context"
@@ -27,11 +27,11 @@ type PostgresConfig struct {
 	Insecure bool `json:"insecure" yaml:"insecure"`
 }
 
-type PostgresStore struct {
+type PostgresStoreRef struct {
 	store
 }
 
-func NewPostgresStore(cfg *PostgresConfig) (*PostgresStore, error) {
+func NewPostgresStore(cfg *PostgresConfig) (*PostgresStoreRef, error) {
 	if cfg == nil {
 		return nil, errors.New("persistent: nil postgres config")
 	}
@@ -56,7 +56,7 @@ func NewPostgresStore(cfg *PostgresConfig) (*PostgresStore, error) {
 	)
 
 	db := bun.NewDB(sql.OpenDB(connector), pgdialect.New())
-	s := &PostgresStore{
+	s := &PostgresStoreRef{
 		db:         db,
 		migrations: set,
 		logger:     slog.With("store", "postgres"),

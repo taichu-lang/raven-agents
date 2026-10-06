@@ -7,8 +7,6 @@ type SourceType string
 const (
 	// SourceTypeAgent are events from agent, ex: llm assistant output.
 	SourceTypeAgent SourceType = "agent"
-	// SourceTypeUser are events from user, ex: llm user input.
-	SourceTypeUser SourceType = "user"
 	// SourceTypeRuntime are events from runtime system, ex: notification, human-in-the-loop.
 	SourceTypeRuntime SourceType = "runtime"
 )
@@ -37,7 +35,7 @@ type Event struct {
 type TurnStartPayload struct {
 	Model    string
 	Provider string
-	Input    []*underlying.Message
+	Input    []*underlying.Message `json:"input"`
 }
 
 type IterationStartPayload struct {

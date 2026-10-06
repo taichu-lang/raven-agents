@@ -19,7 +19,7 @@
 
 ## File Organization
 
-Dependency rule: `interfaces → application → domain ← infrastructure`. Infrastructure and interfaces never import each other.
+Dependency rule: `handler → application → domain ← infrastructure`. Infrastructure and handler never import each other.
 
 ## Code Style
 

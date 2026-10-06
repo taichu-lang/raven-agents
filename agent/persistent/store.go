@@ -10,57 +10,37 @@ import (
 	"uuid"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/migrate"
 )
 
-// ErrNilScope is returned when messages are stored without the conversation they belong to.
-var ErrNilScope = errors.New("persistent: nil scope")
+// ErrNilContext is returned when messages are stored without the conversation they belong to.
+var ErrNilContext = errors.New("persistent: turn context is nil")
 
-// emptyJSONObject is the fallback for the NOT NULL json columns.
-var emptyJSONObject = json.RawMessage(`{}`)
-
-// store holds the dialect independent behavior shared by PostgresStore and SqliteStore.
-type store struct {
-	db         *bun.DB
-	migrations *migrate.Migrations
-	logger     *slog.Logger
+type StoreRef struct {
+	db     *bun.DB
+	logger *slog.Logger
 }
 
-// DB exposes the underlying bun database, so that callers can run custom queries.
-func (s *store) DB() *bun.DB {
-	return s.db
+func NewStoreRef(db *bun.DB, logger *slog.Logger) *StoreRef {
+	return &StoreRef{
+		db:     db,
+		logger: logger,
+	}
 }
 
-func (s *store) Close() error {
-	return s.db.Close()
-}
-
-// Migrate applies the pending schema migrations of the store dialect.
-func (s *store) Migrate(ctx context.Context) error {
-	migrator := migrate.NewMigrator(s.db, s.migrations)
-	if err := migrator.Init(ctx); err != nil {
-		return fmt.Errorf("init migrator: %w", err)
+func (s *StoreRef) Close() error {
+	if s.db != nil {
+		return s.db.Close()
 	}
 
-	group, err := migrator.Migrate(ctx)
-	if err != nil {
-		return fmt.Errorf("apply migrations: %w", err)
-	}
-
-	if group.IsZero() {
-		s.logger.DebugContext(ctx, "schema already up to date")
-		return nil
-	}
-
-	s.logger.InfoContext(ctx, "applied migrations", "group", group.String())
 	return nil
 }
 
 // StoreMessages persists the messages of a single conversation turn. Messages carrying a message id
 // that is already stored are updated in place, which keeps the call idempotent when the agent loop
 // replays the same assistant message across iterations.
-func (s *store) StoreMessages(
+func (s *StoreRef) StoreMessages(
 	ctx context.Context,
 	model string,
 	messages []*underlying.Message,
@@ -96,7 +76,7 @@ func (s *store) StoreMessages(
 
 func buildRows(scope *TurnContext, model string, messages []*underlying.Message) ([]MessageModel, error) {
 	if scope == nil {
-		return nil, ErrNilScope
+		return nil, ErrNilContext
 	}
 
 	createdAt := time.Now().Unix()
@@ -125,7 +105,7 @@ func buildRows(scope *TurnContext, model string, messages []*underlying.Message)
 			Role:           string(message.Role),
 			Content:        content,
 			Model:          model,
-			Metadata:       emptyJSONObject, // message state (interrupted, error), etc.
+			Metadata:       database.EmptyJSONObject, // message state (interrupted, error), etc.
 			CreatedAt:      createdAt,
 		})
 	}

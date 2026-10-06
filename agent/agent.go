@@ -13,6 +13,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 )
 
@@ -22,7 +23,7 @@ var (
 
 type AgentOptions struct {
 	Name  string
-	Store *StoreConfig
+	Store *database.StoreConfig
 	LLM   *underlying.ProviderOptions
 }
 
@@ -105,12 +106,12 @@ func (h *Agent) Shutdown(ctx context.Context) error {
 // Run is the agent's main loop.
 func (h *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 	h.State.resetPerTurn()
-	h.onEvent(event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
+	h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
 		Model:    h.State.Model,
 		Provider: "openai",
 		Input:    input,
 	})
-	defer h.onEvent(event.SourceTypeAgent, event.EventTurnEnd, nil)
+	defer h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
 
 	// Add user message first, as the tool selector might depend on the latest user message.
 	h.State.Messages = append(h.State.Messages, input...)
@@ -153,27 +154,27 @@ func (h *Agent) iterate(
 		return err
 	}
 
-	h.onEvent(event.SourceTypeAgent, event.EventIterationStart, &event.IterationStartPayload{
+	h.onEvent(ctx, event.SourceTypeAgent, event.EventIterationStart, &event.IterationStartPayload{
 		Iteration: h.State.Iterations,
 		Input:     messages,
 	})
 
 	for chunk, err := range h.LLM.Run(ctx, messages, opts...) {
 		if err != nil {
-			h.onEvent(event.SourceTypeAgent, event.EventLLMError, err)
+			h.onEvent(ctx, event.SourceTypeAgent, event.EventLLMError, err)
 			return err
 		}
 
 		switch chunk.Type {
 		case underlying.ResponseChunkTypeDelta:
-			h.onEvent(event.SourceTypeAgent, event.EventLLMDelta, chunk.Contents)
+			h.onEvent(ctx, event.SourceTypeAgent, event.EventLLMDelta, &chunk.Message)
 		case underlying.ResponseChunkTypeFinal:
 			// TODO(Leo): if using tools, llm might returns two assistant messages which declare the same
 			// tool call. The assistant message id are same in this case. Filter out the duplicate
 			// assistant message and tool call content.
 			assistant := h.State.onFinalChunk(chunk)
 			h.saveMessages(ctx, []*underlying.Message{assistant})
-			h.onEvent(event.SourceTypeAgent, event.EventLLMComplete, assistant)
+			h.onEvent(ctx, event.SourceTypeAgent, event.EventLLMComplete, assistant)
 		case underlying.ResponseChunkTypeUsage:
 			usage, _ := chunk.Contents[0].(*underlying.UsageContent)
 			if usage != nil {
@@ -182,24 +183,31 @@ func (h *Agent) iterate(
 		}
 	}
 
-	h.onEvent(event.SourceTypeAgent, event.EventIterationEnd, nil)
+	h.onEvent(ctx, event.SourceTypeAgent, event.EventIterationEnd, nil)
 	return nil
 }
 
-func (h *Agent) onEvent(source event.SourceType, name event.EventName, payload interface{}) {
-	h.EventBus.Emit(&event.Event{
+func (h *Agent) onEvent(
+	ctx context.Context,
+	source event.SourceType,
+	name event.EventName,
+	payload interface{},
+) {
+	if err := h.EventBus.Emit(ctx, &event.Event{
 		ID:      uuid.New().String(),
 		Source:  source,
 		Name:    name,
 		Payload: payload,
-	})
+	}); err != nil {
+		slog.Warn("failed to emit event", "name", name, "err", err)
+	}
 }
 
 func (h *Agent) saveMessages(ctx context.Context, messages []*underlying.Message) {
 	err := h.Store.StoreMessages(ctx, h.State.Model, messages)
 	if err != nil {
 		slog.Warn("failed to persistent messages into store", "err", err)
-		h.onEvent(event.SourceTypeAgent, event.EventRuntimeError, err)
+		h.onEvent(ctx, event.SourceTypeAgent, event.EventRuntimeError, err)
 	}
 }
 
@@ -282,7 +290,7 @@ func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
 	continueInvokeCalls := true
 
 	if len(h.State.Pending) > 0 {
-		h.onEvent(event.SourceTypeRuntime, event.EventHumanApproval, h.State.Pending)
+		h.onEvent(ctx, event.SourceTypeRuntime, event.EventHumanApproval, h.State.Pending)
 		continueInvokeCalls = false
 	}
 
