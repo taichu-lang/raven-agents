@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/application"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
@@ -44,7 +46,12 @@ func (h *ChatHandler) chat(c *gin.Context) {
 
 	events, err := h.service.Chat(ctx, &request)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
+		status := http.StatusInternalServerError
+		if errors.Is(err, agent.ErrSkillNotFound) {
+			status = http.StatusBadRequest
+		}
+
+		c.JSON(status, gin.H{"code": 1, "message": err.Error()})
 		return
 	}
 

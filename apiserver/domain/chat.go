@@ -1,9 +1,16 @@
 package domain
 
+import "github.com/taichu-lang/raven-agents/agent/skill"
+
+type ChatRequestMeta struct {
+	Skills []skill.Skill `json:"skills,omitzero"`
+}
+
 type ChatRequest struct {
-	ConversationID string `json:"-"`
-	Text           string `json:"text"`
-	Model          string `json:"model"`
+	ConversationID string          `json:"-"`
+	Text           string          `json:"text"`
+	Model          string          `json:"model"`
+	Metadata       ChatRequestMeta `json:"metadata,omitzero"`
 }
 
 // ChatEvent is one frame of the chat stream. It is the only shape the client sees, the internal

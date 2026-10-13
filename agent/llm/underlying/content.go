@@ -15,6 +15,10 @@ const (
 
 	ContentKindToolCall   ContentKind = "tool_call"
 	ContentKindToolResult ContentKind = "tool_result"
+
+	// ContentKindSkill discloses a skill to the model. How it reaches the model is left to each
+	// provider, as the shape of the request differs between model apis.
+	ContentKindSkill ContentKind = "skill"
 )
 
 type MediaType string
@@ -180,4 +184,34 @@ func (d *DataContent) MarshalJSON() ([]byte, error) {
 		Type:  d.Kind(),
 	}
 	return json.Marshal(tmp)
+}
+
+// SkillContent marks one skill the caller selected for the turn that carries it. It is a selection
+// marker only: before the turn starts, the agent resolves it into a Skill tool call and its tool
+// result (see beforeUserInput), so no provider adapter ever renders this content.
+type SkillContent struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitzero"`
+}
+
+func (s SkillContent) Kind() ContentKind {
+	return ContentKindSkill
+}
+
+func (s *SkillContent) MarshalJSON() ([]byte, error) {
+	type alias SkillContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(s),
+		Type:  s.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
+func NewUnresolvedSkillContent(name string) *SkillContent {
+	return &SkillContent{
+		Name: name,
+	}
 }

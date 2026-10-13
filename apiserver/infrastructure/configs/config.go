@@ -14,6 +14,9 @@ type Config struct {
 	Endpoint     string                `yaml:"endpoint"`
 	Instructions string                `yaml:"instructions"`
 	Store        *database.StoreConfig `yaml:"store"`
+
+	// TODO(Leo): resolved from runtime?
+	AppDir string `yaml:"app_dir"`
 }
 
 func (c *Config) Load() error {
@@ -32,6 +35,10 @@ func (c *Config) Load() error {
 
 	if err := c.Store.Validate(); err != nil {
 		return fmt.Errorf("invalid store config, %w", err)
+	}
+
+	if c.AppDir == "" {
+		c.AppDir, _ = os.UserHomeDir()
 	}
 
 	return nil

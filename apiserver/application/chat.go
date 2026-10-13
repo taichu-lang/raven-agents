@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 	"uuid"
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
+	"github.com/taichu-lang/raven-agents/agent/skill"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
@@ -16,14 +18,19 @@ import (
 )
 
 type ChatService struct {
-	cfg   *configs.Config
-	store *conversation.ConversationStore
+	cfg       *configs.Config
+	store     *conversation.ConversationStore
+	skillsDir string
 }
 
-func NewChatService(cfg *configs.Config, store *conversation.ConversationStore) *ChatService {
+func NewChatService(
+	cfg *configs.Config,
+	store *conversation.ConversationStore,
+) *ChatService {
 	return &ChatService{
-		cfg:   cfg,
-		store: store,
+		cfg:       cfg,
+		store:     store,
+		skillsDir: path.Join(cfg.AppDir, ".agents", "skills"),
 	}
 }
 
@@ -37,8 +44,6 @@ func (s *ChatService) Chat(
 	ctx context.Context,
 	req *domain.ChatRequest,
 ) (<-chan *event.Event, error) {
-	// Resolving the conversation stays synchronous, so that the caller can still answer with a plain
-	// error status before it commits to a stream.
 	c, err := s.store.Get(ctx, req.ConversationID)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
@@ -67,25 +72,36 @@ func (s *ChatService) Chat(
 			Instructions: s.cfg.Instructions,
 			Model:        req.Model,
 		},
+		SkillDirs: []string{s.skillsDir},
 	})
 
+	skills := s.resolveSkills(req.Metadata.Skills)
 	go func() {
 		// Unsubscribing closes the channel, which ends the consumer's receive loop.
 		defer bus.Unsubscribe(subscription.ID)
+		messages := make([]*underlying.Message, 0, 1+len(skills))
+		messages = append(messages, &underlying.Message{
+			ID:   uuid.New().String(),
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent(req.Text),
+			},
+		})
+		for _, skill := range skills {
+			messages = append(messages, &underlying.Message{
+				ID:   uuid.New().String(),
+				Role: underlying.RoleUser,
+				Contents: underlying.MessageContents{
+					underlying.NewUnresolvedSkillContent(skill),
+				},
+			})
+		}
 
 		if err := a.Run(persistent.WithTurnContext(ctx, &persistent.TurnContext{
 			UserID:         "1",
 			ConversationID: req.ConversationID,
 			Turn:           1,
-		}), []*underlying.Message{
-			{
-				ID:   uuid.New().String(),
-				Role: underlying.RoleUser,
-				Contents: underlying.MessageContents{
-					underlying.NewTextContent(req.Text),
-				},
-			},
-		}); err != nil {
+		}), messages); err != nil {
 			// Report the failure down the stream so that it keeps its place in the order of the events the
 			// consumer has already seen. ctx is detached because the failure is usually the cancellation
 			// itself, and the event would then be dropped by the bus.
@@ -105,4 +121,13 @@ func (s *ChatService) Chat(
 	}()
 
 	return subscription.Channel, nil
+}
+
+func (s *ChatService) resolveSkills(skills []skill.Skill) []string {
+	names := make([]string, 0, len(skills))
+	for _, selected := range skills {
+		names = append(names, selected.Name)
+	}
+
+	return names
 }

@@ -154,6 +154,8 @@ Load 最近 checkpoint → Replay events after → applyEvent 重建 state → n
 
 ### 3.6 ToolRegistry + Skills
 
+> Skill 的详细设计与落地实现见 [skills.md](skills.md)。下文的 Skill 结构是早期草图；实际实现中，显式选中的 skill 在 turn 开始前由 `beforeUserInput` 改写成 `Skill` 工具的 tool call + tool result 消息对并随之持久化，与模型主动加载（内置 `Skill` 工具的 tool result）形态一致。skill 目录的披露方式待 instructions 重设计后回归（见 skills.md）。
+
 Tool 元信息：
 
 ```go
@@ -177,7 +179,7 @@ type Skill struct {
 }
 ```
 
-Registry 每轮 iteration 重新计算 active set，system prompt 动态拼接。
+Registry 的 active set 在每个 turn 开始时计算一次；skill 目录的披露方式待 instructions 重设计后回归（见 skills.md）。
 
 ### 3.7 ContextEngine
 

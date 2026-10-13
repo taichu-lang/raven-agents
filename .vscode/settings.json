@@ -1,5 +1,12 @@
 {
-  "cSpell.words": ["functool", "jsonschema", "omitzero", "ssestream", "taichu"],
+  "cSpell.words": [
+    "frontmatter",
+    "functool",
+    "jsonschema",
+    "omitzero",
+    "ssestream",
+    "taichu"
+  ],
   "emeraldwalk.runonsave": {
     "commands": [
       {

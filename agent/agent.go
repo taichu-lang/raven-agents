@@ -22,20 +22,21 @@ var (
 )
 
 type AgentOptions struct {
-	Name  string
-	Store *database.StoreConfig
-	LLM   *underlying.ProviderOptions
+	Name      string
+	Store     *database.StoreConfig
+	LLM       *underlying.ProviderOptions
+	SkillDirs []string
 }
 
 type Agent struct {
-	State        *AgentState
-	LLM          *llm.Runner
-	Budget       Budget
-	EventBus     event.Bus
-	CtxManager   ContextManager
-	ToolRegistry *ToolRegistry
-	Hooks        *hook.Registry
-	Store        Repository
+	State         *AgentState
+	LLM           *llm.Runner
+	Budget        Budget
+	EventBus      event.Bus
+	SkillRegistry *SkillRegistry
+	ToolRegistry  *ToolRegistry
+	Hooks         *hook.Registry
+	Store         Repository
 
 	// subscription feeds the tracer goroutine; tracerDone is closed once that goroutine has drained
 	// the subscription channel and returned.
@@ -72,7 +73,14 @@ func (h *Agent) init(options *AgentOptions) {
 	h.State.Model = options.LLM.Model
 	h.Budget.MaxIterations = DefaultMaxIterations
 
-	// TODO(Leo): Registry builtin tools.
+	h.SkillRegistry = NewSkillRegistry(options.SkillDirs)
+	loadSkillTool := NewSkillTool(h.SkillRegistry)
+
+	// The active set is computed once per turn, so the tool stays available for the whole
+	// turn as long as any active skill is installed.
+	h.ToolRegistry.Register(loadSkillTool, func(state *AgentState) bool {
+		return len(h.SkillRegistry.Available(state)) > 0
+	})
 
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
@@ -113,10 +121,16 @@ func (h *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 	})
 	defer h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
 
-	// Add user message first, as the tool selector might depend on the latest user message.
-	h.State.Messages = append(h.State.Messages, input...)
-	h.saveMessages(ctx, input)
+	messages, err := h.beforeUserInput(ctx, input)
+	if err != nil {
+		return err
+	}
 
+	// Add user message first, as the tool selector might depend on the latest user message.
+	h.State.Messages = append(h.State.Messages, messages...)
+	h.saveMessages(ctx, messages)
+
+	// The system and tools prompt should keep immutable during the turn.
 	h.State.Tools = h.ToolRegistry.Active(h.State)
 	opts := make([]underlying.WithGenOption, 0, len(h.State.Tools))
 	for _, t := range h.State.Tools {
@@ -149,10 +163,7 @@ func (h *Agent) iterate(
 		h.invokeToolCalls(ctx)
 	}
 
-	messages, err := h.CtxManager.Build(h.State, h.State.Tools)
-	if err != nil {
-		return err
-	}
+	messages := h.State.Messages
 
 	h.onEvent(ctx, event.SourceTypeAgent, event.EventIterationStart, &event.IterationStartPayload{
 		Iteration: h.State.Iterations,
@@ -238,67 +249,43 @@ func (h *Agent) invokeToolCalls(ctx context.Context) {
 		wg.Wait()
 	}
 
+	h.recordActivatedSkills(tools, result)
+
 	h.State.Messages = append(h.State.Messages, result)
 	h.State.ToolCalls = tools[:0]
 }
 
-// beforeToolCall invokes hooks before tool calls, returns whether to continue invoking tool calls.
-func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
-	result := &underlying.Message{Role: underlying.RoleTool}
-	tools := h.State.ToolCalls
-	h.State.ToolCalls = tools[:0]
-	for _, call := range tools {
-		output, err := h.Hooks.Run(ctx, &hook.Input{
-			Event: hook.EventPreToolUse,
-			Tool: &hook.ToolInput{
-				Name:  call.Name,
-				Input: call.Arguments,
-			},
-		})
-		if err != nil {
-			return false, err
+// recordActivatedSkills notes which skills the model pulled in with the skill tool, so that they
+// are no longer offered in the catalog. It runs once the concurrent invocations have been joined,
+// which is what keeps the state written from a single goroutine.
+func (h *Agent) recordActivatedSkills(
+	calls []*underlying.ToolCallContent,
+	result *underlying.Message,
+) {
+	succeeded := make(map[string]struct{}, len(result.Contents))
+	for _, content := range result.Contents {
+		if out, ok := content.(*underlying.ToolResultContent); ok && !out.IsError {
+			succeeded[out.ToolCallID] = struct{}{}
+		}
+	}
+
+	for _, call := range calls {
+		if call.Name != SkillToolName {
+			continue
 		}
 
-		switch output.Decision {
-		case hook.PermissionDeny:
-			// Send back to llm, and let llm to decide whether to change the tool call (ex: use another tool,
-			// or update the arguments).
-			result.Contents = append(
-				result.Contents,
-				underlying.NewToolResultContent(call.ID, call.Name, "denied: "+output.Reason, false),
-			)
-
-		case hook.PermissionAsk:
-			h.State.Status = StatusWaitingApproval
-			h.State.Pending = append(h.State.Pending, &PendingApproval{
-				ToolCall:    call,
-				Reason:      output.Reason,
-				RequestedAt: time.Now(),
-			})
-
-		case hook.PermissionAllow:
-			if output.Tool != nil && output.Tool.UpdatedArgs != nil {
-				call.Arguments = *output.Tool.UpdatedArgs
-			}
-
-			// TODO(Leo): Would this disrupt the order of the LLM's output?
-			h.State.ToolCalls = append(h.State.ToolCalls, call)
+		if _, ok := succeeded[call.ID]; !ok {
+			continue
 		}
 
+		var in skillToolInput
+		if err := json.Unmarshal([]byte(call.Arguments), &in); err != nil {
+			slog.Warn("failed to read back the name of an activated skill", "err", err)
+			continue
+		}
+
+		h.State.activateSkill(in.Name)
 	}
-
-	continueInvokeCalls := true
-
-	if len(h.State.Pending) > 0 {
-		h.onEvent(ctx, event.SourceTypeRuntime, event.EventHumanApproval, h.State.Pending)
-		continueInvokeCalls = false
-	}
-
-	if len(result.Contents) > 0 {
-		h.State.Messages = append(h.State.Messages, result)
-	}
-
-	return continueInvokeCalls, nil
 }
 
 func (h *Agent) invokeOneTool(

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"slices"
 	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
@@ -38,6 +39,17 @@ type AgentState struct {
 	// Pending is the list of actions waiting for human approval.
 	Pending []*PendingApproval
 
+	// Skills holds the names of the skills the caller selected for this turn. beforeUserInput turns
+	// each selection into a Skill tool call and its tool result, so the instructions live in
+	// Messages like any other conversation content; only the names are kept here, as the state must
+	// stay light and the names drive the activation of skill-owned tools.
+	Skills []string
+
+	// Activated holds the names of the skills the model pulled in itself, through the skill tool.
+	// Their instructions already live in Messages as a tool result, so these names are tracked
+	// for the activation of skill-owned tools, not to inject anything.
+	Activated []string
+
 	// TODO(Leo): Move those statistics to a RunContext?
 	StartedAt  time.Time
 	Iterations int64
@@ -47,34 +59,23 @@ type AgentState struct {
 }
 
 func (s *AgentState) resetPerTurn() {
+	// Both selections last for one turn: the caller restates its own with every Run, and what the
+	// model pulled in has already reached it as a tool result.
+	s.Skills = s.Skills[:0]
+	s.Activated = s.Activated[:0]
 	s.Iterations = 0
 	s.TokenUsage = 0
 	s.TokenCost = 0
 	s.StartedAt = time.Now()
 }
 
-func (s *AgentState) lastMessage() *underlying.Message {
-	if len(s.Messages) == 0 {
-		return nil
+// activateSkill records a skill the model pulled in, ignoring one that is already recorded.
+func (s *AgentState) activateSkill(name string) {
+	if slices.Contains(s.Activated, name) {
+		return
 	}
 
-	return s.Messages[len(s.Messages)-1]
-}
-
-func (s *AgentState) lastUserMessage() *underlying.Message {
-	if s.lastMessage() == nil {
-		return nil
-	}
-
-	idx := len(s.Messages) - 1
-	for idx >= 0 {
-		if s.Messages[idx].Role == underlying.RoleUser {
-			return s.Messages[idx]
-		}
-		idx--
-	}
-
-	return nil
+	s.Activated = append(s.Activated, name)
 }
 
 func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) *underlying.Message {
