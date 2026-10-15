@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/skill"
@@ -61,13 +61,13 @@ func skillSelectionMessages(loaded *skill.Loaded, messages []*underlying.Message
 	instructions, _ := json.Marshal(loaded.Instructions)
 
 	messages = append(messages, &underlying.Message{
-		ID:   uuid.New().String(),
+		ID:   uuid.NewString(),
 		Role: underlying.RoleAssistant,
 		Contents: underlying.MessageContents{
 			underlying.NewToolCallContent(toolID, SkillToolName, string(arguments)),
 		},
 	}, &underlying.Message{
-		ID:   uuid.New().String(),
+		ID:   uuid.NewString(),
 		Role: underlying.RoleTool,
 		Contents: underlying.MessageContents{
 			underlying.NewToolResultContent(toolID, SkillToolName, string(instructions), false),

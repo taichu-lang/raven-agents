@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
@@ -69,7 +69,7 @@ func main() {
 		Turn:           1,
 	}), []*underlying.Message{
 		{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Hi, i am leo"),
@@ -86,7 +86,7 @@ func main() {
 		Turn:           2,
 	}), []*underlying.Message{
 		{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Who am i?"),

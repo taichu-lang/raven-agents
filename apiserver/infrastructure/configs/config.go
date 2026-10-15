@@ -9,6 +9,10 @@ import (
 	"github.com/taichu-lang/raven-agents/internal/database"
 )
 
+type Prompt struct {
+	TitleGen string `yaml:"title_gen"`
+}
+
 type Config struct {
 	ApiKey       string                `yaml:"api_key"`
 	Endpoint     string                `yaml:"endpoint"`
@@ -17,6 +21,7 @@ type Config struct {
 
 	// TODO(Leo): resolved from runtime?
 	AppDir string `yaml:"app_dir"`
+	Prompt Prompt `yaml:"prompt"`
 }
 
 func (c *Config) Load() error {
@@ -39,6 +44,10 @@ func (c *Config) Load() error {
 
 	if c.AppDir == "" {
 		c.AppDir, _ = os.UserHomeDir()
+	}
+
+	if c.Prompt.TitleGen == "" {
+		return errors.New("prompt.title_gen is required")
 	}
 
 	return nil

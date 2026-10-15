@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
@@ -205,7 +205,7 @@ func (h *Agent) onEvent(
 	payload interface{},
 ) {
 	if err := h.EventBus.Emit(ctx, &event.Event{
-		ID:      uuid.New().String(),
+		ID:      uuid.NewString(),
 		Source:  source,
 		Name:    name,
 		Payload: payload,

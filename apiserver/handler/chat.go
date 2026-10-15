@@ -36,7 +36,7 @@ func (h *ChatHandler) chat(c *gin.Context) {
 
 	var request domain.ChatRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": err.Error()})
+		c.JSON(http.StatusBadRequest, domain.ApiCodeInput.WithError(err))
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *ChatHandler) chat(c *gin.Context) {
 			status = http.StatusBadRequest
 		}
 
-		c.JSON(status, gin.H{"code": 1, "message": err.Error()})
+		c.JSON(status, domain.ApiCodeSystem.WithError(err))
 		return
 	}
 

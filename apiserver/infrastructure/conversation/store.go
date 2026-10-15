@@ -13,8 +13,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const defaultLimit = 20
-
 // ErrConversationNotFound is returned when the targeted conversation does not exist.
 var ErrConversationNotFound = errors.New("conversation: not found")
 
@@ -127,29 +125,26 @@ func (s *ConversationStore) Get(ctx context.Context, conversationID string) (*Co
 }
 
 // List returns one page of the conversations of a user, the most recently created first. A limit
-// below one falls back to defaultListLimit.
+// below one falls back to defaultLimit. A from above zero is a cursor: only the conversations with
+// a smaller id, the older ones, are returned, so from is the id of the last item of the previous
+// page. A from below one means no cursor, the latest conversations.
 func (s *ConversationStore) List(
 	ctx context.Context,
 	userID int64,
-	limit, page int64,
+	from, limit int64,
 ) ([]*ConversationModel, error) {
-	if limit <= 0 {
-		limit = defaultLimit
-	}
-
-	if page < 0 {
-		page = 0
-	}
-
-	offset := (page - 1) * limit
 	conversations := make([]*ConversationModel, 0, limit)
-	if err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		Model(&conversations).
 		Where("user_id = ?", userID).
 		Order("id DESC").
-		Limit(limit).
-		Offset(offset).
-		Scan(ctx); err != nil {
+		Limit(limit)
+
+	if from > 0 {
+		query = query.Where("id < ?", from)
+	}
+
+	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("list conversations of user %d: %w", userID, err)
 	}
 

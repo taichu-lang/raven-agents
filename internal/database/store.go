@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/driver/pgdriver"
 	"github.com/uptrace/bun/migrate"
 )
 
@@ -18,6 +20,22 @@ type StoreConfig struct {
 
 // EmptyJSONObject is the fallback for the NOT NULL json columns.
 var EmptyJSONObject = json.RawMessage(`{}`)
+
+// IsUniqueViolation reports whether err is a unique constraint violation of the underlying
+// database. Postgres reports it through the pgdriver error type, SQLite through the error
+// message, which both of its drivers share.
+func IsUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) {
+		return pgErr.Field('C') == "23505"
+	}
+
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
 
 // store holds the dialect independent behavior shared by PostgresStore and SqliteStore.
 type store struct {

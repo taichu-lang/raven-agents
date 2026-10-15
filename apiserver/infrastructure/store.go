@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/skill"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/user"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/uptrace/bun"
@@ -14,6 +15,7 @@ type Store struct {
 
 	User         *user.UserStore
 	Conversation *conversation.ConversationStore
+	Skill        *skill.SkillStore
 }
 
 func NewStore(cfg *database.StoreConfig) *Store {
@@ -43,6 +45,7 @@ func NewStore(cfg *database.StoreConfig) *Store {
 		db:           db,
 		User:         user.NewUserStore(db, logger),
 		Conversation: conversation.NewConversationStore(db, logger),
+		Skill:        skill.NewSkillStore(db, logger),
 	}
 }
 

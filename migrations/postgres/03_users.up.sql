@@ -13,5 +13,5 @@ create table if not exists auth_credentials (
     method VARCHAR(16) NOT NULL DEFAULT 'email',
     credential JSONB NOT NULL,
     created_at BIGINT NOT NULL
-)
+);
 

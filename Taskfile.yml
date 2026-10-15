@@ -5,6 +5,11 @@ vars:
   BUILD_DIR: bin
 
 tasks:
+  clean:
+    cmds:
+      - rm -rf {{.BUILD_DIR}}/{{.BINARY_NAME}}
+      - rm -rf examples/hello
+
   apiserver:
     desc: Build apiserver binary.
     cmds:

@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/internal/event"
@@ -53,7 +53,7 @@ func main() {
 	})
 	if err := a.Run(ctx, []*underlying.Message{
 		{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Hi, i am leo"),
@@ -66,7 +66,7 @@ func main() {
 	<-firstReceived
 	if err := a.Run(ctx, []*underlying.Message{
 		{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent("Who am i?"),

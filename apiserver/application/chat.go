@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
@@ -21,6 +21,7 @@ type ChatService struct {
 	cfg       *configs.Config
 	store     *conversation.ConversationStore
 	skillsDir string
+	logger    *slog.Logger
 }
 
 func NewChatService(
@@ -31,6 +32,7 @@ func NewChatService(
 		cfg:       cfg,
 		store:     store,
 		skillsDir: path.Join(cfg.AppDir, ".agents", "skills"),
+		logger:    slog.With("service", "chat"),
 	}
 }
 
@@ -53,9 +55,15 @@ func (s *ChatService) Chat(
 		c = &conversation.ConversationModel{
 			ConversationID: req.ConversationID,
 			UserID:         1,
-			Title:          "",
+			Title:          s.genConversationTitle(ctx, req),
 		}
 		if err := s.store.Create(ctx, c); err != nil {
+			return nil, fmt.Errorf("database error: %w", err)
+		}
+	} else if c.Title == "" {
+		// The title generation might be failed in the first turn, retry in the second turn.
+		c.Title = s.genConversationTitle(ctx, req)
+		if err := s.store.UpdateTitle(ctx, req.ConversationID, c.Title); err != nil {
 			return nil, fmt.Errorf("database error: %w", err)
 		}
 	}
@@ -81,7 +89,7 @@ func (s *ChatService) Chat(
 		defer bus.Unsubscribe(subscription.ID)
 		messages := make([]*underlying.Message, 0, 1+len(skills))
 		messages = append(messages, &underlying.Message{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent(req.Text),
@@ -89,7 +97,7 @@ func (s *ChatService) Chat(
 		})
 		for _, skill := range skills {
 			messages = append(messages, &underlying.Message{
-				ID:   uuid.New().String(),
+				ID:   uuid.NewString(),
 				Role: underlying.RoleUser,
 				Contents: underlying.MessageContents{
 					underlying.NewUnresolvedSkillContent(skill),
@@ -106,7 +114,7 @@ func (s *ChatService) Chat(
 			// consumer has already seen. ctx is detached because the failure is usually the cancellation
 			// itself, and the event would then be dropped by the bus.
 			bus.Emit(context.WithoutCancel(ctx), &event.Event{
-				ID:      uuid.New().String(),
+				ID:      uuid.NewString(),
 				Source:  event.SourceTypeRuntime,
 				Name:    event.EventRuntimeError,
 				Payload: err,

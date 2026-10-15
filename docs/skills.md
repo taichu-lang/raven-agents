@@ -15,25 +15,25 @@ Skill 是一段可复用的指令（一份 `SKILL.md`），用来教模型如何
 
 ## 二、两种场景
 
-| | 显式选择（eager） | 模型自主（lazy） |
-| --- | --- | --- |
-| 触发 | `request.metadata.skills` 非空 | 模型判断任务匹配后调用 `Skill` 工具 |
-| 模型看到的内容 | tool result 中的全文 | tool result 中的全文，形态与左侧完全一致 |
-| 全文何时进入上下文 | turn 开始前（`beforeUserInput` 把选择改写成消息对） | 模型调用 `Skill` 工具之后 |
-| 落库形态 | assistant tool call + tool result 消息对，随 turn 的消息写入 `messages` 表 | 同形态；工具结果的落库尚未接上（见第九节） |
-| 重复披露 | 不会：全文已在对话中 | 不会：已拉取的全文留在对话里 |
+|                    | 显式选择（eager）                                                          | 模型自主（lazy）                           |
+| ------------------ | -------------------------------------------------------------------------- | ------------------------------------------ |
+| 触发               | `request.metadata.skills` 非空                                             | 模型判断任务匹配后调用 `Skill` 工具        |
+| 模型看到的内容     | tool result 中的全文                                                       | tool result 中的全文，形态与左侧完全一致   |
+| 全文何时进入上下文 | turn 开始前（`beforeUserInput` 把选择改写成消息对）                        | 模型调用 `Skill` 工具之后                  |
+| 落库形态           | assistant tool call + tool result 消息对，随 turn 的消息写入 `messages` 表 | 同形态；工具结果的落库尚未接上（见第九节） |
+| 重复披露           | 不会：全文已在对话中                                                       | 不会：已拉取的全文留在对话里               |
 
 ## 三、组件
 
-| 组件 | 位置 | 职责 |
-| --- | --- | --- |
-| `Skill` / `Loaded` | `agent/skill/skill.go` | 元信息；`Loaded` 额外携带正文 |
-| `Loader` | `agent/skill/loader.go` | 扫描目录、解析 frontmatter、读取正文、缓存 |
-| `SkillRegistry` | `agent/skill.go` | 进程级已安装 skill 表，与 `ToolRegistry` 同构 |
-| `Skill` 工具 | `agent/skill.go` | 内置工具，模型用它按名字加载全文 |
-| `SkillContent` | `agent/llm/underlying/content.go` | 选择标记：调用方在输入中用它表示"本 turn 使用某 skill"，只含名字，不含正文 |
-| `beforeUserInput` | `agent/hooks.go` | turn 开始前把每条选择消息改写成 `Skill` 工具的 tool call + tool result 消息对 |
-| `AgentState.Skills` / `Activated` | `agent/state.go` | 本轮显式选中的名字 / 模型已拉取的名字 |
+| 组件                              | 位置                              | 职责                                                                          |
+| --------------------------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| `Skill` / `Loaded`                | `agent/skill/skill.go`            | 元信息；`Loaded` 额外携带正文                                                 |
+| `Loader`                          | `agent/skill/loader.go`           | 扫描目录、解析 frontmatter、读取正文、缓存                                    |
+| `SkillRegistry`                   | `agent/skill.go`                  | 进程级已安装 skill 表，与 `ToolRegistry` 同构                                 |
+| `Skill` 工具                      | `agent/skill.go`                  | 内置工具，模型用它按名字加载全文                                              |
+| `SkillContent`                    | `agent/llm/underlying/content.go` | 选择标记：调用方在输入中用它表示"本 turn 使用某 skill"，只含名字，不含正文    |
+| `beforeUserInput`                 | `agent/hooks.go`                  | turn 开始前把每条选择消息改写成 `Skill` 工具的 tool call + tool result 消息对 |
+| `AgentState.Skills` / `Activated` | `agent/state.go`                  | 本轮显式选中的名字 / 模型已拉取的名字                                         |
 
 ### 依赖方向
 
@@ -187,15 +187,15 @@ skill 安装目录为 `<app_dir>/.agents/skills`（取自 `configs.Config.AppDir
 
 ## 八、错误处理与安全
 
-| 场景 | 处理 |
-| --- | --- |
-| 请求的 skill 未安装 | 开流前返回 HTTP 400，错误中给出名字 |
-| 选择的名字 registry 不认识（调用方绕过了预校验） | `Run` 返回错误，turn 以 runtime error 收场 |
-| 显式选中的 skill 读取失败 | 同上：`beforeUserInput` 直接失败，不做部分降级 |
-| 模型调用不存在的 skill | 工具返回错误，并列出已安装的 skill 名，供模型自行纠正 |
-| 扫描目录失败 | 记录告警，服务以无 skill 状态启动 |
-| 路径逃逸（`..`、符号路径越出 root） | `ErrOutsideRoot`，拒绝读取 |
-| 正文超过 1 MiB | `ErrManifestTooLarge`，拒绝读取 |
+| 场景                                             | 处理                                                  |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| 请求的 skill 未安装                              | 开流前返回 HTTP 400，错误中给出名字                   |
+| 选择的名字 registry 不认识（调用方绕过了预校验） | `Run` 返回错误，turn 以 runtime error 收场            |
+| 显式选中的 skill 读取失败                        | 同上：`beforeUserInput` 直接失败，不做部分降级        |
+| 模型调用不存在的 skill                           | 工具返回错误，并列出已安装的 skill 名，供模型自行纠正 |
+| 扫描目录失败                                     | 记录告警，服务以无 skill 状态启动                     |
+| 路径逃逸（`..`、符号路径越出 root）              | `ErrOutsideRoot`，拒绝读取                            |
+| 正文超过 1 MiB                                   | `ErrManifestTooLarge`，拒绝读取                       |
 
 路径校验依赖 `Loader` 记住的扫描根：只要 `Scan` 过的目录之外的路径都会被拒绝。没有扫描过任何目录时不做限制，这是为手动注册（例如测试）保留的行为。
 
@@ -216,10 +216,10 @@ skill 安装目录为 `<app_dir>/.agents/skills`（取自 `configs.Config.AppDir
 
 ## 十、测试
 
-| 范围 | 文件 | 覆盖 |
-| --- | --- | --- |
-| Loader | `agent/skill/loader_test.go` | frontmatter 解析、正文剥离、跳过无清单目录、路径逃逸、超限、编辑后缓存失效 |
-| 渲染 | `agent/llm/openai/skill_test.go` | 选择改写出的消息对渲染为 function_call / function_call_output 且 call_id 对齐、instructions 不被污染 |
+| 范围   | 文件                             | 覆盖                                                                                                 |
+| ------ | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Loader | `agent/skill/loader_test.go`     | frontmatter 解析、正文剥离、跳过无清单目录、路径逃逸、超限、编辑后缓存失效                           |
+| 渲染   | `agent/llm/openai/skill_test.go` | 选择改写出的消息对渲染为 function_call / function_call_output 且 call_id 对齐、instructions 不被污染 |
 
 运行：
 
@@ -228,3 +228,69 @@ go test ./agent/... -race
 ```
 
 HTTP 层（gin、application 接线）目前只由编译保证，尚无自动化测试。
+
+## 附: 常见 Agent 的实现
+
+### OpenCode
+
+- 如果是用户选择 skill，在用户的输入中通过 `@<skill>` 的方式引入. 同时会把 skill 的完整内容, 添加到 user prompt 的最前面. skill 内容的模板如下:
+
+  ```xml
+  <skill_content name="<name>">
+  # Skill: <name>
+
+  <skill.md 的完整内容>
+
+  Base directory for this skill: <skill_installation>
+  Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.
+  Note: file list is sampled.
+
+  <skill_files>
+  </skill_files>
+
+  </skill_content>
+  ```
+
+  > - `skill_files` 是会列举 skill 目录下的文件的全路径, 最多 10 个.
+  > - 无论用户输入时, 引用 skill 的位置是在哪里, 都是把上述模板内容追加在最前面. 比如 `<模板内容> what does @hello-world do?`.
+
+- skill tool 的定义:
+
+  ```json
+  {
+    "type": "function",
+    "function": {
+      "name": "skill",
+      "description": "Load a specialized skill's instructions and resources into the current conversation when the task at hand matches its description.\n\nThe skill ID must match an available skill or a skill explicitly referenced by the user.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of an available skill or a skill explicitly referenced by the user"
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "strict": false
+    }
+  }
+  ```
+
+- 在 system prompt 中, 会以如下方式列举出可用的 skills:
+
+  ```plain
+  Skills provide specialized instructions and workflows for specific tasks.
+  Use the skill tool to load a skill when a task matches its description.
+  The user may also invoke a skill directly. When that happens, its instructions appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill that is already present this way does not need to be invoked again.
+  <available_skills>
+    <skill>
+      <id>find-skills</id>
+      <name>find-skills</name>
+      <description>Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.</description>
+    </skill>
+  </available_skills>
+  ```
+
+  > - 上述的内容是直接追加到 system prompt 中的; 甚至还有 tool schema 的定义. 同时 `tools` 中会给出所有的 tool call 定义.

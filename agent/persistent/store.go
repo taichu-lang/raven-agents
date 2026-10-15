@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/uptrace/bun"
@@ -95,7 +95,7 @@ func buildRows(scope *TurnContext, model string, messages []*underlying.Message)
 		// that they do not all collide on the unique message_id column.
 		messageID := message.ID
 		if messageID == "" {
-			messageID = uuid.New().String()
+			messageID = uuid.NewString()
 		}
 
 		rows = append(rows, MessageModel{

@@ -3,8 +3,8 @@ package llm
 import (
 	"context"
 	"log/slog"
-	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm/openai"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
@@ -46,7 +46,7 @@ func NewRunner(options *underlying.ProviderOptions) *Runner {
 func (a *Runner) RunText(ctx context.Context, text string) underlying.ResponseStream {
 	return a.entrypoint(ctx, []*underlying.Message{
 		{
-			ID:   uuid.New().String(),
+			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
 				underlying.NewTextContent(text),

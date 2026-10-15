@@ -13,4 +13,12 @@ func AddRouters(router *gin.Engine, cfg *configs.Config, store *infrastructure.S
 	chatService := application.NewChatService(cfg, store.Conversation)
 	chatHandler := NewChatHandler(chatService)
 	chatHandler.AddRouters(group)
+
+	skillService := application.NewSkillService(store.Skill)
+	skillHandler := NewSkillHandler(skillService)
+	skillHandler.AddRouters(group)
+
+	userService := application.NewUserService(store.User)
+	userHandler := NewUserHandler(userService)
+	userHandler.AddRouters(group)
 }
