@@ -13,7 +13,11 @@ import (
 )
 
 type TraceSubscriber struct {
+	userID string
 	tracer trace.Tracer
+
+	agentCtx  context.Context
+	agentSpan trace.Span
 
 	turnCtx  context.Context
 	turnSpan trace.Span
@@ -23,15 +27,29 @@ type TraceSubscriber struct {
 	iterationSpan trace.Span
 }
 
-func NewTraceSubscriber(root string) *TraceSubscriber {
+func NewTraceSubscriber(root string, userID string) *TraceSubscriber {
 	tp := otel.GetTracerProvider()
 	if tp == nil {
 		panic("Invoke NewTracerProvider first")
 	}
 
+	tracer := tp.Tracer(root)
+	agentCtx, agentSpan := tracer.Start(context.Background(), root)
+	agentSpan.SetAttributes(
+		attribute.String(observability.UserID, userID),
+		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindAgent),
+	)
+
 	return &TraceSubscriber{
-		tracer: tp.Tracer(root),
+		userID:    userID,
+		tracer:    tracer,
+		agentCtx:  agentCtx,
+		agentSpan: agentSpan,
 	}
+}
+
+func (s *TraceSubscriber) Close() {
+	s.agentSpan.End()
 }
 
 func (s *TraceSubscriber) OnEvent(e *event.Event) {
@@ -60,8 +78,8 @@ func (s *TraceSubscriber) OnEvent(e *event.Event) {
 
 func (s *TraceSubscriber) onTurnStart(turn *event.TurnStartPayload) {
 	s.turnCtx, s.turnSpan = s.tracer.Start(
-		context.Background(),
-		"turn.start",
+		s.agentCtx,
+		fmt.Sprintf("turn.#%d", turn.Turn),
 	)
 	s.turnSpan.SetAttributes(
 		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindAgent),
@@ -84,7 +102,7 @@ func (s *TraceSubscriber) onIterationStart(payload *event.IterationStartPayload)
 
 	s.iterationCtx, s.iterationSpan = s.tracer.Start(
 		s.turnCtx,
-		fmt.Sprintf("iteration.%d", payload.Iteration),
+		fmt.Sprintf("iteration.#%d", payload.Iteration),
 	)
 	s.iterationSpan.SetAttributes(
 		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindLLM),

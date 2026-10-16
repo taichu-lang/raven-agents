@@ -33,6 +33,7 @@ type Event struct {
 }
 
 type TurnStartPayload struct {
+	Turn     int64
 	Model    string
 	Provider string
 	Input    []*underlying.Message `json:"input"`

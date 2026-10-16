@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/agent/skill"
 	"github.com/taichu-lang/raven-agents/internal/event"
 )
@@ -121,7 +122,7 @@ func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
 			)
 
 		case hook.PermissionAsk:
-			h.State.Status = StatusWaitingApproval
+			h.State.Status = persistent.TurnStatusWaitingApproval
 			h.State.Pending = append(h.State.Pending, &PendingApproval{
 				ToolCall:    call,
 				Reason:      output.Reason,

@@ -9,13 +9,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/agent/skill"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/internal/event"
 )
+
+const EventConversationStart = "conversation.start"
 
 type ChatService struct {
 	cfg       *configs.Config
@@ -51,6 +52,7 @@ func (s *ChatService) Chat(
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
+	conversationUpdated := false
 	if c == nil {
 		c = &conversation.ConversationModel{
 			ConversationID: req.ConversationID,
@@ -60,20 +62,36 @@ func (s *ChatService) Chat(
 		if err := s.store.Create(ctx, c); err != nil {
 			return nil, fmt.Errorf("database error: %w", err)
 		}
+		conversationUpdated = true
 	} else if c.Title == "" {
 		// The title generation might be failed in the first turn, retry in the second turn.
 		c.Title = s.genConversationTitle(ctx, req)
 		if err := s.store.UpdateTitle(ctx, req.ConversationID, c.Title); err != nil {
 			return nil, fmt.Errorf("database error: %w", err)
 		}
+		conversationUpdated = true
 	}
 
 	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
+	if conversationUpdated {
+		bus.Emit(ctx, &event.Event{
+			ID:     uuid.NewString(),
+			Source: event.SourceTypeAgent,
+			Name:   EventConversationStart,
+			Payload: &domain.Conversation{
+				ID:             c.ID,
+				ConversationID: c.ConversationID,
+				Title:          c.Title,
+			},
+		})
+	}
 
 	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
-		Name:  "some-name",
-		Store: s.cfg.Store,
+		Name:           fmt.Sprintf("main-#%d", c.ID),
+		UserID:         "1",
+		ConversationID: req.ConversationID,
+		Store:          s.cfg.Store,
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       s.cfg.ApiKey,
 			Endpoint:     s.cfg.Endpoint,
@@ -105,11 +123,7 @@ func (s *ChatService) Chat(
 			})
 		}
 
-		if err := a.Run(persistent.WithTurnContext(ctx, &persistent.TurnContext{
-			UserID:         "1",
-			ConversationID: req.ConversationID,
-			Turn:           1,
-		}), messages); err != nil {
+		if err := a.Run(ctx, messages); err != nil {
 			// Report the failure down the stream so that it keeps its place in the order of the events the
 			// consumer has already seen. ctx is detached because the failure is usually the cancellation
 			// itself, and the event would then be dropped by the bus.

@@ -70,6 +70,8 @@ func (h *ChatHandler) chat(c *gin.Context) {
 			}
 
 			switch e.Name {
+			case application.EventConversationStart:
+				fallthrough
 			case event.EventTurnStart:
 				c.SSEvent(string(e.Name), e.Payload)
 

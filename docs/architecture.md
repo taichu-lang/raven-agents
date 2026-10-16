@@ -10,6 +10,7 @@
 4. **五层领域模型**：Conversation ⊃ Branch ⊃ Turn ⊃ Run ⊃ Iteration
 5. **消息不可变**：编辑 = fork 新 branch，压缩产物独立存储不覆盖原文
 6. **Event Sourcing**：过程可回放、UI 可实时、断线可补拉
+7. **无状态恢复**：Harness 实例即用即弃，任意进程可从 DB 重建现场续跑（多实例 apiserver 的前提）
 
 ---
 
@@ -39,7 +40,7 @@
 ┌──────────────────────────────┴──────────────────────────────┐
 │                       基础设施层                              │
 │   ToolRegistry   ContextEngine   PermissionPolicy           │
-│   HookRegistry   EventBus        CheckPointer   Budget      │
+│   HookRegistry   EventBus        RunManager     Budget      │
 └──────────────────────────────┬──────────────────────────────┘
                                │
 ┌──────────────────────────────┴──────────────────────────────┐
@@ -136,21 +137,24 @@ Filter{RunIDs: {...}, Types: {...}, TypePrefixes: ["tool_call."], Tier: &Control
 
 **顺序保证**：per-run 单调（loop goroutine 串行 publish），跨 run 不保证。
 
-### 3.5 Checkpointer
+### 3.5 State 恢复（无独立 checkpoint 表）
 
-**落点三处**：
+**原则：消息日志是 source of truth，可推导的 state 不单独快照。** 对照 LangGraph checkpointer 的三层结构——逻辑上 MVCC（checkpoint 不可变、append-only、thread 持当前指针）、存储上 COW（按 channel version 结构共享）、time travel 是 fork 不是 rewind——本框架的内容侧已由 messages 表天然覆盖（append-only，粒度比 super-step 快照更细），因此**不建 checkpoints 表**。
 
-1. 每轮 iteration 结束
-2. HITL 挂起前
-3. Resume 决策后
+| State                                            | 来源                                                                                |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Messages / 待执行 ToolCalls / Skills / Activated | **推导**：messages 表（tool_call 配对关系即断点）                                   |
+| turn 序号 / Status / Pending / 统计              | **落库**：turns + pending_approvals（控制面元数据，原地 UPDATE 不违反时间旅行语义） |
 
-**Resume 流程**：
+**恢复 = Load → Restore → 重入主循环**，不做状态机特殊跳转：
 
 ```
-Load 最近 checkpoint → Replay events after → applyEvent 重建 state → new Harness → Run/Resume
+LoadMessages(conversation) → agent.Restore(messages) → Run / Resume
 ```
 
-**跨 HTTP 请求**：Harness 是无状态实例，State 是持久化的，任何进程 load 都能续跑。
+**落库粒度 = iteration 边界**（assistant final chunk 才写、tool result 成组写），库中状态永远一致，恢复点天然存在。
+
+未来的 fork / time travel 走 Branch（fork_message_id），即 COW，不引入 checkpoint_id 寻址。
 
 ### 3.6 ToolRegistry + Skills
 
@@ -195,22 +199,32 @@ Registry 的 active set 在每个 turn 开始时计算一次；skill 目录的�
 
 ### 3.8 PermissionPolicy + HITL
 
-三种决策：`Allow` / `Deny` / `Ask`
+三种决策：`Allow` / `Deny` / `Ask`。与 Hook 合并：PreToolUse hook 优先，Policy 兜底。
 
-**与 Hook 合并**：PreToolUse hook 优先，Policy 兜底。
+**交互模式是 tool 的元数据**（注册时声明；审批场景不用枚举区分，由 tool schema 驱动）：
+
+| 模式          | 含义                           | 人的产出（output）                                         |
+| ------------- | ------------------------------ | ---------------------------------------------------------- |
+| `None`        | 只读工具                       | —（永不挂起）                                              |
+| `Approval`    | 副作用工具，授权后才执行       | 系统固定 decision schema：approve / deny / approveWithArgs |
+| `Interactive` | 交互工具（AskUserQuestion 式） | 按工具声明的 output schema 校验后**直接作为 tool_result**  |
 
 **混合场景（一轮多个 tool_call）**：
 
 1. 分类（不执行）
 2. 先执行所有 Allow（可并发，保序 append tool_result）
 3. Deny 合成 error tool_result（**必须**，否则 API 400）
-4. 遇到 Ask 挂起 → Checkpoint → Return ErrInterrupted
+4. 遇到 Ask → 写 `pending_approvals`（tool_call_id 幂等键，input/output JSONB）→ 发 `permission.request` → turn 置 waiting_approval → Return ErrInterrupted
 
-**Resume 三种决策**：Approve / ApproveWithArgs / Deny，每种都必须落到 messages 里。
+**等待期零资源**：无连接、无 goroutine、无内存状态。审批发现两通道：SSE 实时事件 + `GET /conversations/{id}` 资源表示。`expires_at` 过期 → 合成 error tool_result（配对不变量任何时刻不破）。
 
-**幂等**：`hasResult(tool_call_id)` 从 messages 派生，不用单独 flag。
+**Resume**：CAS 接管 turn → 决策 CAS 落库（`WHERE status='pending'`）→ 按工具元数据分流执行或直返 → 全部落 messages → 重入主循环。
+
+**幂等**：`hasResult(tool_call_id)` 从 messages 派生，决策 CAS 防重复执行。
 
 **已执行 Allow 不可撤销**：靠 tool 分级（ReadOnly vs 副作用）+ 保守模式（有 Ask 时 Allow 也 pending）解决。
+
+**新 HITL 场景 = 注册新工具 + 声明 schema**，表结构与 resume 主流程零变更；与 MCP elicitation 的 `requestedSchema` 同构。
 
 ### 3.9 Budget
 
@@ -226,6 +240,23 @@ type Budget struct {
 ```
 
 Context tokens 是**空间维度**（触发压缩），Total tokens 是**时间维度**（触发终止），两者独立。
+
+### 3.10 RunManager（实例内 run 监督者）
+
+apiserver 多实例部署，每次请求 `agent.New` 新建实例，状态全部来自 DB（无 sticky session）。**两条生命周期分离**：
+
+- **view**（SSE 订阅）：绑定请求 ctx，客户端断开即取消订阅；
+- **run**（agent goroutine）：`context.WithoutCancel` 派生（保留 TurnContext / trace values），由 RunManager 持有 cancel，与任何连接无关。
+
+**职责**：
+
+1. run 注册表（turnID → cancel）
+2. 心跳续租 + 读回 `cancel_requested`
+3. goroutine recover（脱离 HTTP 栈后 panic 无人兜）
+4. 退出必写终态（done / failed / waiting_approval / interrupted）
+5. 优雅停机：拒新 turn → 等存量 → 超时 cancel 标 interrupted
+
+**终止条件**：done / budget（客户端消失时的兜底上界）/ suspend / cancel / 僵尸回收（见 5.6）。
 
 ---
 
@@ -261,14 +292,18 @@ Conversation  用户视角的一整个对话（跨天跨设备）
 ```sql
 conversations(id, user_id, title, active_branch, config, ...)
 branches(id, conversation_id, parent_branch_id, fork_message_id, head_message_id, ...)
-turns(id, conversation_id, branch_id, turn_number, user_message_id, status, ...)
+turns(id, conversation_id, branch_id, turn_number, user_message_id, status,
+      lease_until, epoch, cancel_requested,           -- 多实例控制面，见 5.6
+      iterations, tokens_used, last_message_id, ...)
 runs(id, turn_id, agent_id, parent_run_id, handoff_from_run, root_message_id,
-     status, trace_id, state_snapshot, iteration_count, tokens_used, ...)
+     status, trace_id, iteration_count, tokens_used, ...)    -- MVP 与 turns 1:1 并存
 messages(id, conversation_id, branch_id, turn_id, run_id, parent_message_id,
          role, content, tool_calls, tool_call_id, seq, is_sub_agent_internal, ...)
 events(id BIGSERIAL, run_id, turn_id, iteration_index, type, tier, payload,
        trace_id, span_id, parent_event_id, ...)
-checkpoints(run_id, at_event_id, iteration_index, state, ...)
+pending_approvals(id, conversation_id, turn_id, tool_call_id UNIQUE,      -- 幂等键
+                  tool_name, input JSONB, output JSONB, reason,           -- 场景由 tool schema 驱动，见 3.8
+                  status, expires_at, created_at, decided_at)
 message_summaries(id, conversation_id, branch_id, run_id,
                   covers_from_seq, covers_to_seq, summary, tokens, ...)
 ```
@@ -281,49 +316,62 @@ message_summaries(id, conversation_id, branch_id, run_id,
 - Retry：1 : N（同 root_message_id）
 - Guardrail 拦截：1 : 0
 
+**MVP 简化**：Turn : Run 按 1 : 1 实现，run 级控制字段（lease / epoch / 统计）先并存在 turns 表，sub-agent / retry 引入时再拆出 runs。原设计中的 `checkpoints` 表与 `runs.state_snapshot` 已移除：state 从 messages 推导（见 3.5），只有控制面落库。
+
 ---
 
 ## 五、关键流程
 
-### 5.1 用户发送消息（正常流程）
+### 5.1 用户投递输入（统一 endpoint）
+
+客户端心智：永远只向 conversation 资源投递输入、接收事件，**不理解服务端状态机**。
 
 ```
-POST /conversations/{id}/messages
-  ↓
-创建 Turn + user Message + Run
-  ↓
-异步启动 Harness.Run(ctx)
-  ↓
-前端订阅 GET /runs/{run_id}/stream (SSE)
-  ↓
-Loop iteration → emit events → SSE push
-  ↓
-Run done → SSE 'done' sentinel → 客户端 abort
+POST /conversations/{id}                      唯一投递口，SSE 响应
+  { type: "message",  text, model, skills, message_id }   ← message_id 客户端生成，投递幂等
+  { type: "approval", decisions: [{approval_id, action, updated_args?}] }
+  { type: "cancel" }
 ```
+
+服务端按 `body.type` + 当前 turn 状态分流（显式 type 判别，混合 payload 一律 400）：
+
+| body     | turn 状态         | 行为                                                                                   |
+| -------- | ----------------- | -------------------------------------------------------------------------------------- |
+| message  | 空闲              | BeginTurn → Run                                                                        |
+| message  | running           | 409                                                                                    |
+| message  | waiting_approval  | **带反馈的拒绝**：deny 全部 pending，text 作为反馈进 error tool_result，同一 turn 续跑 |
+| approval | waiting_approval  | Resume（见 5.2）                                                                       |
+| approval | 其他              | 409                                                                                    |
+| cancel   | running / waiting | 置 cancel_requested（见 5.6）                                                          |
+
+`GET /conversations/{id}` 的资源表示携带 `pending_approvals`，客户端唯一规则：渲染当前挂着的审批。
+
+Run 在后台异步推进（RunManager，见 3.10），事件经 SSE 推送；Run 结束发 `done` sentinel 后客户端断开。
 
 ### 5.2 HITL 挂起与恢复
 
 ```
 LLM 返回 [A(Allow), B(Ask), C(Allow)]
-  ├─ 执行 A、C，append tool_result          Checkpoint #1
-  ├─ B → Pending, Status=WaitingApproval
-  ├─ Emit permission_request
-  ├─ Checkpoint.Save                        Checkpoint #2
-  └─ Return ErrInterrupted
+  ├─ 执行 A、C，append tool_result
+  ├─ B → INSERT pending_approvals（tool_call_id 幂等键）
+  ├─ Emit permission.request
+  ├─ turns.status = waiting_approval
+  ├─ Return ErrInterrupted（goroutine 退出，零资源持有）
+  └─ SSE 发 turn.suspended 后正常关闭
 
-（用户 UI 决策，可能几分钟后）
+（用户决策可能数小时后，经任意实例到达）
 
-POST /runs/{id}/resume  body: {decisions: {B.id: {kind: "approve"}}}
+POST /conversations/{id}  { type: "approval", decisions: {...} }
   ↓
-Load checkpoint → rebuild Harness → Resume(decisions)
-  ├─ Approve → execTool(B)
-  ├─ Deny → appendToolResult(B, "denied: ...", true)
-  └─ ApproveWithArgs → 用新 args 执行
+断言 waiting → CAS 接管（epoch+1，见 5.6）→ 决策 CAS 落库（幂等）
+  ├─ approve → 执行 tool（可用 updated_args）→ append tool_result
+  ├─ deny → 合成 error tool_result
+  └─ Interactive 工具 → output 按 schema 校验，直作 tool_result
   ↓
-Status = Running → 回主 loop
+status = running → 重入主循环，事件走本次请求的新 SSE
 ```
 
-**Deny 必须合成 error tool_result**（API 层配对不变量）。
+**Deny 必须合成 error tool_result**（API 层配对不变量）。部分决策 → 保持 waiting；全部决策 → 续跑。
 
 ### 5.3 Fork（从历史点继续）
 
@@ -370,6 +418,23 @@ Dedup by ID（跳过 <= lastID 的）
 ```
 
 **首次连接推 snapshot**（比逐条重放快），后续走增量。
+
+### 5.6 多实例：租约、fencing 与故障恢复
+
+**活性**：`lease_until` + 心跳续租。
+
+**防脑裂（fencing epoch）**：接管 turn 时 `epoch+1`；持有方所有写带 `WHERE epoch=?`，失配即自我取消。消息持久化事务内嵌 epoch 断言（兼作租约续期），fencing 窗口压到一个事务内：
+
+```
+接管: UPDATE turns SET epoch=epoch+1, lease_until=? WHERE id=? AND lease_until < now
+写入: UPDATE turns SET lease_until=? WHERE id=? AND epoch=?   -- 与 StoreMessages 同事务
+```
+
+**跨实例取消**：cancel 是数据（`turns.cancel_requested`）。请求落到持有实例 → 内存 registry 直接 cancel；否则心跳时读回标志执行。
+
+**僵尸回收**：租约过期 → 标 interrupted。MVP 由用户显式重试；自动续跑待副作用工具支持幂等键（tool_call_id 天然可用）后放开——崩溃窗口"工具已执行、result 未落库"无法靠消息粒度幂等消除。
+
+**事件跨实例**：MVP 期 run 在收请求的实例执行、SSE 连同一实例（按 conversation 一致性路由）；长期 Redis Streams fanout（见 §8）。
 
 ---
 
@@ -439,12 +504,13 @@ Trace (trace_id = conversation_id)
 - Postgres：conversations / messages / runs
 - SSE Streamer（无 Replay）
 
-### Phase 2 — HITL + 持久化
+### Phase 2 — 恢复 + HITL + 多实例
 
-- Checkpointer
-- PermissionPolicy + Pending 挂起
-- Resume API（Approve / Deny / Modify）
-- Events 表 + SSE Last-Event-ID 补拉
+1. turns 表 + LoadMessages + Restore（第 N 轮恢复）
+2. pending_approvals + Suspend / Resume + 统一 endpoint（message / approval / cancel）
+3. RunManager（run / view 生命周期分离 + cancel）
+4. 租约 / epoch fencing / 僵尸回收 + 审批过期
+5. events 表 + SSE Last-Event-ID 补拉
 
 ### Phase 3 — 扩展性
 
@@ -465,6 +531,12 @@ Trace (trace_id = conversation_id)
 - Conversation 归档
 - 冷数据分层存储
 
+### Backlog
+
+- **warm agent pool**（单机 / 桌面）：turn 结束或挂起后实例置 idle + TTL 回收，resume 命中 warm 实例可跳过 store 重连与 state 重建；与多实例模型互斥（会把 turn 钉在特定节点），默认关闭，多实例下靠共享连接池 / skill 缓存优化冷启动
+- **MCP elicitation**（工具执行中索取输入）：需工具可挂起 / 可重入；可复用 pending_approvals（Interactive），resume 变为"带补充输入重入执行"
+- **崩溃自动续跑**：需副作用工具支持幂等键（tool_call_id 天然可用）；放开前僵尸一律 interrupted + 用户显式重试
+
 ---
 
 ## 十、关键取舍
@@ -479,6 +551,11 @@ Trace (trace_id = conversation_id)
 8. **Bus 不做全局排序**：单 run 串行天然有序，跨 run 无序（consumer 按 ID 自排）
 9. **Deny 必须合成 error tool_result**：API 层配对不变量
 10. **LangGraph 是状态机层，不是 harness 层**：只借鉴 checkpointer / interrupt 机制，别照搬 graph 抽象
+11. **不建 checkpoints 表**：messages append-only 即 MVCC，state 靠推导，只有控制面落库
+12. **活性靠 lease，防脑裂靠 epoch fencing**：fencing 断言内嵌消息写事务
+13. **等待期零资源**：HITL 挂起即释放连接与 goroutine，审批是数据不是回调
+14. **统一投递口**：客户端不理解状态机；waiting 时收到 text = 带反馈的拒绝
+15. **审批场景由 tool schema 驱动**：交互模式是工具元数据，新场景零表变更（与 MCP elicitation 同构）
 
 ---
 

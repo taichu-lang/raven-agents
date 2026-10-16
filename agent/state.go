@@ -5,17 +5,8 @@ import (
 	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/tool"
-)
-
-type Status string
-
-const (
-	StatusIdle            Status = "idle"
-	StatusRunning         Status = "running"
-	StatusWaitingApproval Status = "waiting_approval"
-	StatusDone            Status = "done"
-	StatusFailed          Status = "failed"
 )
 
 type PendingApproval struct {
@@ -27,7 +18,6 @@ type PendingApproval struct {
 // AgentState represents the shared state of the agent, which can be accessed and modified by all nodes in the
 // graph. Fields in this struct are intended to be persistent, and can be resumed after a restart of the agent.
 type AgentState struct {
-	Status   Status
 	Messages []*underlying.Message
 
 	// Tools is the list of active tools in each turn.
@@ -50,12 +40,7 @@ type AgentState struct {
 	// for the activation of skill-owned tools, not to inject anything.
 	Activated []string
 
-	// TODO(Leo): Move those statistics to a RunContext?
-	StartedAt  time.Time
-	Iterations int64
-	TokenUsage int64
-	TokenCost  float64
-	Model      string
+	persistent.TurnContext
 }
 
 func (s *AgentState) resetPerTurn() {

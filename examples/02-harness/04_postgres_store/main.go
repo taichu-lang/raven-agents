@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/internal/observability"
@@ -45,7 +44,9 @@ func main() {
 	}()
 
 	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
-		Name: "postgres-store",
+		Name:           "postgres-store",
+		UserID:         "user-0",
+		ConversationID: "conv-1",
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("OPENAI_APIKEY"),
 			Endpoint:     os.Getenv("OPENAI_API"),
@@ -54,7 +55,7 @@ func main() {
 		},
 		Store: &database.StoreConfig{
 			Postgres: &database.PostgresConfig{
-				Address:  "localhost:46873",
+				Address:  "localhost:15432",
 				User:     "postgres",
 				Password: "postgres",
 				Database: "raven",
@@ -63,11 +64,7 @@ func main() {
 		},
 	})
 
-	if err := a.Run(persistent.WithTurnContext(ctx, &persistent.TurnContext{
-		UserID:         "user-0",
-		ConversationID: "conv-1",
-		Turn:           1,
-	}), []*underlying.Message{
+	if err := a.Run(ctx, []*underlying.Message{
 		{
 			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
@@ -80,11 +77,7 @@ func main() {
 	}
 
 	<-firstReceived
-	if err := a.Run(persistent.WithTurnContext(ctx, &persistent.TurnContext{
-		UserID:         "user-0",
-		ConversationID: "conv-1",
-		Turn:           2,
-	}), []*underlying.Message{
+	if err := a.Run(ctx, []*underlying.Message{
 		{
 			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,

@@ -13,6 +13,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 )
@@ -22,10 +23,12 @@ var (
 )
 
 type AgentOptions struct {
-	Name      string
-	Store     *database.StoreConfig
-	LLM       *underlying.ProviderOptions
-	SkillDirs []string
+	ConversationID string
+	UserID         string
+	Name           string
+	Store          *database.StoreConfig
+	LLM            *underlying.ProviderOptions
+	SkillDirs      []string
 }
 
 type Agent struct {
@@ -42,11 +45,22 @@ type Agent struct {
 	// the subscription channel and returned.
 	subscription *event.Subscription
 	tracerDone   chan struct{}
+	tracer       *TraceSubscriber
 }
 
 func New(eventBus event.Bus, tr *ToolRegistry, options *AgentOptions) *Agent {
+	if err := options.validate(); err != nil {
+		panic(err)
+	}
+
 	h := &Agent{
-		State:        &AgentState{},
+		State: &AgentState{
+			Status:         persistent.TurnStatusIdle,
+			StartedAt:      time.Now(),
+			Model:          options.LLM.Model,
+			UserID:         options.UserID,
+			ConversationID: options.ConversationID,
+		},
 		EventBus:     eventBus,
 		ToolRegistry: tr,
 		Hooks:        hook.NewRegistry(),
@@ -56,10 +70,6 @@ func New(eventBus event.Bus, tr *ToolRegistry, options *AgentOptions) *Agent {
 }
 
 func (h *Agent) init(options *AgentOptions) {
-	if err := options.validate(); err != nil {
-		panic(err)
-	}
-
 	if store, err := NewRepository(options.Store); err != nil {
 		panic(fmt.Errorf("failed to create persistent store, %v", err))
 	} else {
@@ -67,12 +77,7 @@ func (h *Agent) init(options *AgentOptions) {
 	}
 
 	h.LLM = llm.NewRunner(options.LLM)
-
-	h.State.Status = StatusIdle
-	h.State.StartedAt = time.Now()
-	h.State.Model = options.LLM.Model
 	h.Budget.MaxIterations = DefaultMaxIterations
-
 	h.SkillRegistry = NewSkillRegistry(options.SkillDirs)
 	loadSkillTool := NewSkillTool(h.SkillRegistry)
 
@@ -84,13 +89,13 @@ func (h *Agent) init(options *AgentOptions) {
 
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
-	tracer := NewTraceSubscriber(options.Name)
+	h.tracer = NewTraceSubscriber(options.Name, options.UserID)
 	h.subscription = h.EventBus.Subscribe()
 	h.tracerDone = make(chan struct{})
 	go func() {
 		defer close(h.tracerDone)
 		for e := range h.subscription.Channel {
-			tracer.OnEvent(e)
+			h.tracer.OnEvent(e)
 		}
 	}()
 }
@@ -98,6 +103,7 @@ func (h *Agent) init(options *AgentOptions) {
 // Shutdown unsubscribes from the event bus and waits for the tracer goroutine to consume the events
 // still buffered in the subscription channel before closing the store.
 func (h *Agent) Shutdown(ctx context.Context) error {
+	defer h.tracer.Close()
 	if err := h.EventBus.Unsubscribe(h.subscription.ID); err != nil {
 		return err
 	}
@@ -114,17 +120,26 @@ func (h *Agent) Shutdown(ctx context.Context) error {
 // Run is the agent's main loop.
 func (h *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 	h.State.resetPerTurn()
-	h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
-		Model:    h.State.Model,
-		Provider: "openai",
-		Input:    input,
-	})
-	defer h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
-
 	messages, err := h.beforeUserInput(ctx, input)
 	if err != nil {
 		return err
 	}
+
+	turn, err := h.Store.AddTurn(ctx, &h.State.TurnContext, messages[0].ID)
+	if err != nil {
+		return err
+	}
+
+	h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
+		Turn:     turn.TurnSeq,
+		Model:    h.State.Model,
+		Provider: "openai",
+		Input:    input,
+	})
+	defer func() {
+		_ = h.Store.UpdateTurn(ctx, &h.State.TurnContext)
+		h.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
+	}()
 
 	// Add user message first, as the tool selector might depend on the latest user message.
 	h.State.Messages = append(h.State.Messages, messages...)
@@ -139,19 +154,21 @@ func (h *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 
 	for {
 		if h.Budget.Exceeded(h.State) {
+			h.State.Status = persistent.TurnStatusInterrupted
 			return ErrBudgetExceeded
 		}
 
 		h.State.Iterations++
 		if err := h.iterate(ctx, opts); err != nil {
+			h.State.Status = persistent.TurnStatusFailed
 			return err
 		}
 
 		if len(h.State.ToolCalls) == 0 {
+			h.State.Status = persistent.TurnStatusDone
 			return nil
 		}
 	}
-
 }
 
 func (h *Agent) iterate(
@@ -215,7 +232,7 @@ func (h *Agent) onEvent(
 }
 
 func (h *Agent) saveMessages(ctx context.Context, messages []*underlying.Message) {
-	err := h.Store.StoreMessages(ctx, h.State.Model, messages)
+	err := h.Store.StoreMessages(ctx, &h.State.TurnContext, messages)
 	if err != nil {
 		slog.Warn("failed to persistent messages into store", "err", err)
 		h.onEvent(ctx, event.SourceTypeAgent, event.EventRuntimeError, err)
@@ -318,6 +335,14 @@ func (h *Agent) invokeOneTool(
 func (o *AgentOptions) validate() error {
 	if o.Name == "" {
 		return errors.New("name is required")
+	}
+
+	if o.UserID == "" {
+		return errors.New("user_id is required")
+	}
+
+	if o.ConversationID == "" {
+		return errors.New("conversation_id is required")
 	}
 
 	if o.LLM == nil {

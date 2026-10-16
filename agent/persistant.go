@@ -9,9 +9,23 @@ import (
 )
 
 type Repository interface {
+	// AddTurn appends a new turn to the conversation, assigning it the next contiguous turn_seq
+	// (1, 2, 3, ...), and returns the stored turn.
+	AddTurn(
+		ctx context.Context,
+		turnContext *persistent.TurnContext,
+		userMessageID string,
+	) (*persistent.TurnModel, error)
+
+	UpdateTurn(ctx context.Context, turnContext *persistent.TurnContext) error
+
 	// StoreMessages persists the messages produced by a single conversation turn. Scope carries the
 	// conversation attributes that an underlying.Message does not know about.
-	StoreMessages(ctx context.Context, model string, messages []*underlying.Message) error
+	StoreMessages(
+		ctx context.Context,
+		turnContext *persistent.TurnContext,
+		messages []*underlying.Message,
+	) error
 
 	// Close releases the underlying database connections.
 	Close() error
