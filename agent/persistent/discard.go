@@ -45,6 +45,10 @@ func (d *DiscardStore) StoreMessages(
 	return nil
 }
 
+func (d *DiscardStore) LoadMessages(ctx context.Context, conversationID string) ([]*underlying.Message, error) {
+	return []*underlying.Message{}, nil
+}
+
 func (d *DiscardStore) Close() error {
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
+	"github.com/taichu-lang/raven-agents/internal/database"
 )
 
 // GetConversations returns one cursor page of the conversations of a user, the most recently
@@ -31,16 +32,36 @@ func (s *ChatService) GetConversations(
 
 	items := make([]domain.Conversation, 0, len(models))
 	for _, model := range models {
-		items = append(items, domain.Conversation{
-			ID:             model.ID,
-			ConversationID: model.ConversationID,
-			Title:          model.Title,
-			Metadata:       model.Metadata,
-			CreatedAt:      model.CreatedAt,
-		})
+		items = append(items, domain.ConversationFromModel(model))
 	}
 
 	return items, nil
+}
+
+func (s *ChatService) GetConversation(
+	ctx context.Context,
+	conversationID string,
+) (*domain.ConversationView, error) {
+	cm, err := s.store.Get(ctx, conversationID)
+	if cm != nil {
+		mm, err := s.store.GetMessages(ctx, conversationID)
+		if err != nil {
+			return nil, err
+		}
+
+		messages, err := database.FromMessageRows(mm)
+		if err != nil {
+			return nil, err
+		}
+
+		view := &domain.ConversationView{
+			Conversation: domain.ConversationFromModel(cm),
+			Messages:     messages,
+		}
+		return view, nil
+	}
+
+	return nil, err
 }
 
 func (s *ChatService) genConversationTitle(ctx context.Context, req *domain.ChatRequest) string {

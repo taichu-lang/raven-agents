@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/uptrace/bun"
 )
 
 type Repository interface {
@@ -27,6 +29,8 @@ type Repository interface {
 		messages []*underlying.Message,
 	) error
 
+	LoadMessages(ctx context.Context, conversationID string) ([]*underlying.Message, error)
+
 	// Close releases the underlying database connections.
 	Close() error
 }
@@ -34,22 +38,26 @@ type Repository interface {
 var _ Repository = (*persistent.StoreRef)(nil)
 var _ Repository = (*persistent.DiscardStore)(nil)
 
-func NewRepository(cfg *database.StoreConfig) (Repository, error) {
-	if cfg == nil {
+func NewRepository(db *bun.DB, cfg *database.StoreConfig) (Repository, error) {
+	if cfg == nil && db == nil {
 		return &persistent.DiscardStore{}, nil
+	}
+
+	if db != nil {
+		return persistent.NewStoreRef(db, slog.With("component", "persistent"), true), nil
 	}
 
 	if cfg.Postgres != nil {
 		if p, err := database.NewPostgresStore(cfg.Postgres); err != nil {
 			return nil, err
 		} else {
-			return persistent.NewStoreRef(p.DB(), p.Logger()), nil
+			return persistent.NewStoreRef(p.DB(), p.Logger(), false), nil
 		}
 	}
 
 	if s, err := database.NewSqliteStore(cfg.Sqlite); err != nil {
 		return nil, err
 	} else {
-		return persistent.NewStoreRef(s.DB(), s.Logger()), nil
+		return persistent.NewStoreRef(s.DB(), s.Logger(), false), nil
 	}
 }

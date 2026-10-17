@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,10 @@ func IsUniqueViolation(err error) bool {
 	}
 
 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func IsNoRows(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
 }
 
 // store holds the dialect independent behavior shared by PostgresStore and SqliteStore.

@@ -114,7 +114,7 @@ func (s *ConversationStore) Delete(ctx context.Context, conversationID string) e
 func (s *ConversationStore) Get(ctx context.Context, conversationID string) (*ConversationModel, error) {
 	conversation := &ConversationModel{}
 	if err := s.db.NewSelect().Model(conversation).Where("conversation_id = ?", conversationID).Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNoRows(err) {
 			return nil, nil
 		}
 
@@ -163,4 +163,24 @@ func affected(result sql.Result, conversationID string) error {
 	}
 
 	return nil
+}
+
+func (s *ConversationStore) GetMessages(
+	ctx context.Context,
+	conversationID string,
+) ([]database.MessageModel, error) {
+	rows := make([]database.MessageModel, 0)
+	if err := s.db.NewSelect().
+		Model(&rows).
+		Where("conversation_id = ?", conversationID).
+		Order("id").
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return []database.MessageModel{}, nil
+		}
+
+		return nil, fmt.Errorf("load messages of conversation %s: %w", conversationID, err)
+	}
+
+	return rows, nil
 }

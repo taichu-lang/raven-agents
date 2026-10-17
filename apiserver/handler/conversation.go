@@ -23,3 +23,19 @@ func (h *ChatHandler) getConversations(c *gin.Context) {
 
 	c.JSON(http.StatusOK, domain.ApiCodeSuccess.WithData(items))
 }
+
+func (h *ChatHandler) getConversation(c *gin.Context) {
+	id := c.Param("id")
+	conversation, err := h.service.GetConversation(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ApiCodeSystem.WithError(err))
+		return
+	}
+
+	if conversation == nil {
+		c.JSON(http.StatusNotFound, domain.ApiCodeInput.WithData("no conversation"))
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.ApiCodeSuccess.WithData(conversation))
+}

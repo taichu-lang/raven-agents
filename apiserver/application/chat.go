@@ -91,7 +91,7 @@ func (s *ChatService) Chat(
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         "1",
 		ConversationID: req.ConversationID,
-		Store:          s.cfg.Store,
+		StoreCfg:       s.cfg.Store,
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       s.cfg.ApiKey,
 			Endpoint:     s.cfg.Endpoint,

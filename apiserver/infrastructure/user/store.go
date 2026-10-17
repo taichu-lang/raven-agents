@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,7 +81,7 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*UserModel, *
 		Where("method = ?", MethodEmail).
 		Where(s.emailExpression()+" = ?", email).
 		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNoRows(err) {
 			return nil, nil, nil
 		}
 
@@ -99,7 +98,7 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*UserModel, *
 		Model(user).
 		Where("id = ?", credentialModel.UserID).
 		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNoRows(err) {
 			return nil, nil, nil
 		}
 

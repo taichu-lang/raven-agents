@@ -1,6 +1,9 @@
 package underlying
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type ContentKind string
 
@@ -178,7 +181,7 @@ func (d *DataContent) MarshalJSON() ([]byte, error) {
 	type alias DataContent
 	tmp := struct {
 		*alias
-		Type ContentKind
+		Type ContentKind `json:"type"`
 	}{
 		alias: (*alias)(d),
 		Type:  d.Kind(),
@@ -214,4 +217,63 @@ func NewUnresolvedSkillContent(name string) *SkillContent {
 	return &SkillContent{
 		Name: name,
 	}
+}
+
+// UnmarshalMessageContents decodes the JSON produced by marshalling a MessageContents. It is the
+// inverse of the per type MarshalJSON methods: every content carries the type discriminator they
+// write next to their own fields.
+func UnmarshalMessageContents(data []byte) (MessageContents, error) {
+	if len(data) == 0 {
+		return MessageContents{}, nil
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("unmarshal message contents: %w", err)
+	}
+
+	contents := make(MessageContents, 0, len(items))
+	for _, item := range items {
+		content, err := unmarshalMessageContent(item)
+		if err != nil {
+			return nil, err
+		}
+
+		contents = append(contents, content)
+	}
+
+	return contents, nil
+}
+
+func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
+	var discriminator struct {
+		Type ContentKind `json:"type"`
+	}
+	if err := json.Unmarshal(data, &discriminator); err != nil {
+		return nil, fmt.Errorf("unmarshal message content: %w", err)
+	}
+
+	var content MessageContent
+	switch discriminator.Type {
+	case ContentKindText:
+		content = new(TextContent)
+	case ContentKindUsage:
+		content = new(UsageContent)
+	case ContentKindData:
+		content = new(DataContent)
+	case ContentKindToolCall:
+		content = new(ToolCallContent)
+	case ContentKindToolResult:
+		content = new(ToolResultContent)
+	case ContentKindSkill:
+		content = new(SkillContent)
+	default:
+		return nil, fmt.Errorf("unmarshal message content: unknown type %q", discriminator.Type)
+	}
+
+	if err := json.Unmarshal(data, content); err != nil {
+		return nil, fmt.Errorf("unmarshal %s content: %w", discriminator.Type, err)
+	}
+
+	return content, nil
 }

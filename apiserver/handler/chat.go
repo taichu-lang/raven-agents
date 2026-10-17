@@ -29,6 +29,7 @@ func NewChatHandler(srv *application.ChatService) *ChatHandler {
 func (h *ChatHandler) AddRouters(router *gin.RouterGroup) {
 	router.POST("/chat/:id", h.chat)
 	router.GET("/conversations", h.getConversations)
+	router.GET("/conversations/:id", h.getConversation)
 }
 
 func (h *ChatHandler) chat(c *gin.Context) {

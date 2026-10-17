@@ -22,16 +22,22 @@ var ErrTurnNotFound = errors.New("persistent: turn not found")
 type StoreRef struct {
 	db     *bun.DB
 	logger *slog.Logger
+	shared bool
 }
 
-func NewStoreRef(db *bun.DB, logger *slog.Logger) *StoreRef {
+func NewStoreRef(db *bun.DB, logger *slog.Logger, shared bool) *StoreRef {
 	return &StoreRef{
 		db:     db,
 		logger: logger,
+		shared: shared,
 	}
 }
 
 func (s *StoreRef) Close() error {
+	if s.shared {
+		return nil
+	}
+
 	if s.db != nil {
 		return s.db.Close()
 	}
@@ -192,16 +198,35 @@ func (s *StoreRef) StoreMessages(
 	return nil
 }
 
+// LoadMessages returns the messages of a conversation in the order they were stored, decoding each
+// stored content column back into its underlying.MessageContents.
+func (s *StoreRef) LoadMessages(ctx context.Context, conversationID string) ([]*underlying.Message, error) {
+	rows := make([]database.MessageModel, 0)
+	if err := s.db.NewSelect().
+		Model(&rows).
+		Where("conversation_id = ?", conversationID).
+		Order("id").
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return []*underlying.Message{}, nil
+		}
+
+		return nil, fmt.Errorf("load messages of conversation %s: %w", conversationID, err)
+	}
+
+	return database.FromMessageRows(rows)
+}
+
 func buildMessageRows(
 	ctx *TurnContext,
 	messages []*underlying.Message,
-) ([]MessageModel, error) {
+) ([]database.MessageModel, error) {
 	if ctx == nil {
 		return nil, ErrNilContext
 	}
 
 	createdAt := time.Now().Unix()
-	rows := make([]MessageModel, 0, len(messages))
+	rows := make([]database.MessageModel, 0, len(messages))
 	for _, message := range messages {
 		if message == nil {
 			continue
@@ -212,7 +237,7 @@ func buildMessageRows(
 			return nil, err
 		}
 
-		rows = append(rows, MessageModel{
+		rows = append(rows, database.MessageModel{
 			MessageID:      message.ID,
 			ConversationID: ctx.ConversationID,
 			TurnSeq:        ctx.TurnSeq,

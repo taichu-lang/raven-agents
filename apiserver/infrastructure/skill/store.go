@@ -2,7 +2,6 @@ package skill
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -87,7 +86,7 @@ func (s *SkillStore) Get(ctx context.Context, name, version string) (*SkillModel
 		Model(skill).
 		Where("name = ? AND version = ?", name, version).
 		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNoRows(err) {
 			return nil, nil
 		}
 
@@ -104,7 +103,7 @@ func (s *SkillStore) GetByID(ctx context.Context, id int64) (*SkillModel, error)
 		Model(skill).
 		Where("id = ?", id).
 		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNoRows(err) {
 			return nil, nil
 		}
 

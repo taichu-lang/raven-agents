@@ -53,7 +53,7 @@ func main() {
 			Instructions: "You are a helpful assistant!",
 			Model:        "gpt-4.1-nano",
 		},
-		Store: &database.StoreConfig{
+		StoreCfg: &database.StoreConfig{
 			Postgres: &database.PostgresConfig{
 				Address:  "localhost:15432",
 				User:     "postgres",
