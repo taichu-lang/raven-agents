@@ -64,16 +64,22 @@ func TestSelectedSkillTravelsAsFunctionCallAndOutput(t *testing.T) {
 	}
 
 	if len(decoded) != 3 {
-		t.Fatalf("expected the user text, the function call and its output, got %d items: %s", len(decoded), encoded)
+		t.Fatalf(
+			"expected the user text, the function call and its output, got %d items: %s",
+			len(decoded),
+			encoded,
+		)
 	}
 
 	call := decoded[1]
-	if call.Type != "function_call" || call.CallID != "toolu_abc123" || call.Name != "Skill" || call.Arguments != `{"name":"pdf-processing"}` {
+	if call.Type != "function_call" || call.CallID != "toolu_abc123" || call.Name != "Skill" ||
+		call.Arguments != `{"name":"pdf-processing"}` {
 		t.Fatalf("unexpected function call: %+v (raw: %s)", call, encoded)
 	}
 
 	output := decoded[2]
-	if output.Type != "function_call_output" || output.CallID != "toolu_abc123" || output.Output != "\"body text\"" {
+	if output.Type != "function_call_output" || output.CallID != "toolu_abc123" ||
+		output.Output != "\"body text\"" {
 		t.Fatalf("unexpected function call output: %+v (raw: %s)", output, encoded)
 	}
 }

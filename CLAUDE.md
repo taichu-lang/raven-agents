@@ -23,6 +23,7 @@ Dependency rule: `handler → application → domain ← infrastructure`. Infras
 
 ## Code Style
 
+- Go code is formatted with `golines --max-len=112 --shorten-comments`; keep lines at most 112 characters. golines does not rewrap comments, so wrap comment lines manually at the same width.
 - Using `slog` as the logger interface.
 - Repository list functions must return an empty slice (not `nil`) when no rows are found; initialize with `make([]*T, 0)`.
 - Naming: Avoid uncommon abbreviations; prioritize clarity and accurate understanding over brevity.

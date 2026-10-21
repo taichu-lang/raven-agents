@@ -1,9 +1,3 @@
-# 询问用户
-
-## 用户意图识别
-
-### OpenCode
-
 - 模型会回复一次 function call 的响应. 如:
 
   ```json

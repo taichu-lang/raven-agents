@@ -16,6 +16,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/uptrace/bun"
 )
 
@@ -33,6 +34,14 @@ type AgentOptions struct {
 	// Persistent store configuration, either creating a new database connection or using the shared one.
 	StoreCfg *database.StoreConfig
 	Store    *bun.DB
+
+	// SandboxProvider provisions the sandbox that backs the execution tools (ex: exec-command). The provider
+	// is shared process-wide while the sandbox instance is created per agent and closed on Shutdown. When nil,
+	// the execution tools are not registered.
+	SandboxProvider sandbox.Provider
+
+	// WorkDir is the working directory of the sandbox; empty means the backend default.
+	WorkDir string
 }
 
 type Agent struct {
@@ -44,6 +53,7 @@ type Agent struct {
 	ToolRegistry  *ToolRegistry
 	Hooks         *hook.Registry
 	Store         Repository
+	Sandbox       sandbox.Sandbox
 
 	// subscription feeds the tracer goroutine; tracerDone is closed once that goroutine has drained
 	// the subscription channel and returned.
@@ -90,13 +100,22 @@ func (a *Agent) init(options *AgentOptions) {
 	a.LLM = llm.NewRunner(options.LLM)
 	a.Budget.MaxIterations = DefaultMaxIterations
 	a.SkillRegistry = NewSkillRegistry(options.SkillDirs)
-	loadSkillTool := NewSkillTool(a.SkillRegistry)
 
-	// The active set is computed once per turn, so the tool stays available for the whole
-	// turn as long as any active skill is installed.
-	a.ToolRegistry.Register(loadSkillTool, func(state *AgentState) bool {
-		return len(a.SkillRegistry.Available(state)) > 0
-	})
+	if options.SandboxProvider != nil {
+		// The sandbox ID is left to the provider rather than fixed to the conversation ID: turns of one
+		// conversation run on separate agent instances, and a fixed ID would collide when turns overlap.
+		// Revisit once Provider. Attach lands persistent sandboxes.
+		sb, err := options.SandboxProvider.Create(context.Background(), &sandbox.Spec{
+			WorkingDir: options.WorkDir,
+		})
+		if err != nil {
+			panic(fmt.Errorf("failed to create sandbox, %v", err))
+		}
+
+		a.Sandbox = sb
+	}
+
+	a.addBuiltinTools()
 
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
@@ -111,8 +130,25 @@ func (a *Agent) init(options *AgentOptions) {
 	}()
 }
 
+func (a *Agent) addBuiltinTools() {
+	if a.SkillRegistry == nil {
+		panic("call this function after SkillRegistry is initialized")
+	}
+
+	loadSkillTool := NewSkillTool(a.SkillRegistry)
+
+	// The active set is computed once per turn, so the tool stays available for the whole turn as long as any
+	// active skill is installed.
+	a.ToolRegistry.Register(loadSkillTool, func(state *AgentState) bool {
+		return len(a.SkillRegistry.Available(state)) > 0
+	})
+	if a.Sandbox != nil {
+		a.ToolRegistry.Register(NewExecTool(a.Sandbox), nil)
+	}
+}
+
 // Shutdown unsubscribes from the event bus and waits for the tracer goroutine to consume the events
-// still buffered in the subscription channel before closing the store.
+// still buffered in the subscription channel before closing the sandbox and the store.
 func (a *Agent) Shutdown(ctx context.Context) error {
 	defer a.tracer.Close()
 	if err := a.EventBus.Unsubscribe(a.subscription.ID); err != nil {
@@ -123,6 +159,14 @@ func (a *Agent) Shutdown(ctx context.Context) error {
 	case <-a.tracerDone:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+
+	// The agent owns the sandbox instance, so it is closed here; the provider belongs to the caller and
+	// outlives the agent.
+	if a.Sandbox != nil {
+		if err := a.Sandbox.Close(ctx); err != nil {
+			slog.Warn("failed to close sandbox", "sandbox_id", a.Sandbox.ID(), "err", err)
+		}
 	}
 
 	return a.Store.Close()

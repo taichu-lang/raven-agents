@@ -11,7 +11,7 @@
     "commands": [
       {
         "match": "\\.go$",
-        "cmd": "golines -m 112 -w ${file}"
+        "cmd": "golines --max-len=112 --shorten-comments -w ${file}"
       }
     ]
   },

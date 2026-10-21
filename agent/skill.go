@@ -16,7 +16,7 @@ import (
 
 // SkillToolName is the name of the builtin tool the model calls to pull in the instructions of a
 // skill it has only seen named in the catalog.
-const SkillToolName = "Skill"
+const SkillToolName = "skill"
 
 var ErrSkillNotFound = errors.New("skill not found")
 

@@ -90,7 +90,8 @@ type Budget struct {
 	// MaxIterations is the maximum number of loop iterations in each turn, to prevent infinite loops.
 	MaxIterations int64
 
-	// MaxContextTokens is the maximum number of tokens in the context window, used to trigger context compaction.
+	// MaxContextTokens is the maximum number of tokens in the context window, used to trigger context
+	// compaction.
 	MaxContextTokens int64
 
 	// MaxDuration is the maximum duration of the agent execution, in seconds, to prevent long-running.

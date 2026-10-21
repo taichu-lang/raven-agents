@@ -14,15 +14,18 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/sandbox"
+	"github.com/taichu-lang/raven-agents/sandbox/local"
 )
 
 const EventConversationStart = "conversation.start"
 
 type ChatService struct {
-	cfg       *configs.Config
-	store     *conversation.ConversationStore
-	skillsDir string
-	logger    *slog.Logger
+	cfg             *configs.Config
+	logger          *slog.Logger
+	store           *conversation.ConversationStore
+	skillsDir       string
+	sandboxProvider sandbox.Provider
 }
 
 func NewChatService(
@@ -30,10 +33,11 @@ func NewChatService(
 	store *conversation.ConversationStore,
 ) *ChatService {
 	return &ChatService{
-		cfg:       cfg,
-		store:     store,
-		skillsDir: path.Join(cfg.AppDir, ".agents", "skills"),
-		logger:    slog.With("service", "chat"),
+		cfg:             cfg,
+		logger:          slog.With("service", "chat"),
+		store:           store,
+		skillsDir:       path.Join(cfg.AppDir, ".agents", "skills"),
+		sandboxProvider: local.NewProvider(),
 	}
 }
 
@@ -98,7 +102,8 @@ func (s *ChatService) Chat(
 			Instructions: s.cfg.Instructions,
 			Model:        req.Model,
 		},
-		SkillDirs: []string{s.skillsDir},
+		SkillDirs:       []string{s.skillsDir},
+		SandboxProvider: s.sandboxProvider,
 	})
 
 	skills := s.resolveSkills(req.Metadata.Skills)
