@@ -137,6 +137,8 @@ Filter{RunIDs: {...}, Types: {...}, TypePrefixes: ["tool_call."], Tier: &Control
 
 **顺序保证**：per-run 单调（loop goroutine 串行 publish），跨 run 不保证。
 
+**LLM 事件顺序约定**：`llm.usage` 必须先于 `llm.complete` 发出——消费方依赖此顺序（如 tracing 在仍处于打开状态的 LLM span 上记录 token 用量，收到 complete 即关闭 span）。对接新的 LLM 供应商时，Provider Adapter 必须保证 usage chunk 先于 final chunk 产出；若供应商在 final 之后才返回 usage，需在 adapter 侧调整顺序（现有 OpenAI adapter 在流式与非流式两种模式下均已保证）。
+
 ### 3.5 State 恢复（无独立 checkpoint 表）
 
 **原则：消息日志是 source of truth，可推导的 state 不单独快照。** 对照 LangGraph checkpointer 的三层结构——逻辑上 MVCC（checkpoint 不可变、append-only、thread 持当前指针）、存储上 COW（按 channel version 结构共享）、time travel 是 fork 不是 rewind——本框架的内容侧已由 messages 表天然覆盖（append-only，粒度比 super-step 快照更细），因此**不建 checkpoints 表**。

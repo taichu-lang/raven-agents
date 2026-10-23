@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/taichu-lang/raven-agents/agent"
-	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/application"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/internal/event"
@@ -74,13 +73,15 @@ func (h *ChatHandler) chat(c *gin.Context) {
 			case application.EventConversationStart:
 				fallthrough
 			case event.EventTurnStart:
-				c.SSEvent(string(e.Name), e.Payload)
-
+				fallthrough
 			case event.EventLLMDelta:
 				fallthrough
 			case event.EventLLMComplete:
-				message := e.Payload.(*underlying.Message)
-				c.SSEvent(string(e.Name), message)
+				fallthrough
+			case event.EventToolCall:
+				fallthrough
+			case event.EventToolResult:
+				c.SSEvent(string(e.Name), e.Payload)
 
 			case event.EventTurnEnd:
 				c.SSEvent(string(e.Name), "[DONE]")

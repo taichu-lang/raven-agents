@@ -1,6 +1,10 @@
 package underlying
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
 
 type MessageContents []MessageContent
 
@@ -45,4 +49,12 @@ func (c MessageContents) CollectText() string {
 	}
 
 	return sb.String()
+}
+
+func NewMessage(role Role, contents MessageContents) *Message {
+	return &Message{
+		ID:       uuid.NewString(),
+		Role:     role,
+		Contents: contents,
+	}
 }

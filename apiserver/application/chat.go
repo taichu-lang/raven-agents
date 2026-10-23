@@ -56,46 +56,25 @@ func (s *ChatService) Chat(
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	conversationUpdated := false
 	if c == nil {
 		c = &conversation.ConversationModel{
 			ConversationID: req.ConversationID,
 			UserID:         1,
-			Title:          s.genConversationTitle(ctx, req),
 		}
 		if err := s.store.Create(ctx, c); err != nil {
 			return nil, fmt.Errorf("database error: %w", err)
 		}
-		conversationUpdated = true
-	} else if c.Title == "" {
-		// The title generation might be failed in the first turn, retry in the second turn.
-		c.Title = s.genConversationTitle(ctx, req)
-		if err := s.store.UpdateTitle(ctx, req.ConversationID, c.Title); err != nil {
-			return nil, fmt.Errorf("database error: %w", err)
-		}
-		conversationUpdated = true
 	}
 
 	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
-	if conversationUpdated {
-		bus.Emit(ctx, &event.Event{
-			ID:     uuid.NewString(),
-			Source: event.SourceTypeAgent,
-			Name:   EventConversationStart,
-			Payload: &domain.Conversation{
-				ID:             c.ID,
-				ConversationID: c.ConversationID,
-				Title:          c.Title,
-			},
-		})
-	}
 
+	titleGen := s.genConversationTitle(ctx, req, c, bus)
 	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         "1",
 		ConversationID: req.ConversationID,
-		StoreCfg:       s.cfg.Store,
+		Store:          s.store.GetUnderlying(),
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       s.cfg.ApiKey,
 			Endpoint:     s.cfg.Endpoint,
@@ -109,23 +88,24 @@ func (s *ChatService) Chat(
 	skills := s.resolveSkills(req.Metadata.Skills)
 	go func() {
 		// Unsubscribing closes the channel, which ends the consumer's receive loop.
-		defer bus.Unsubscribe(subscription.ID)
+		defer func() {
+			titleGen.wait()
+			bus.Unsubscribe(subscription.ID)
+		}()
 		messages := make([]*underlying.Message, 0, 1+len(skills))
-		messages = append(messages, &underlying.Message{
-			ID:   uuid.NewString(),
-			Role: underlying.RoleUser,
-			Contents: underlying.MessageContents{
+		messages = append(messages, underlying.NewMessage(
+			underlying.RoleUser,
+			underlying.MessageContents{
 				underlying.NewTextContent(req.Text),
 			},
-		})
+		))
 		for _, skill := range skills {
-			messages = append(messages, &underlying.Message{
-				ID:   uuid.NewString(),
-				Role: underlying.RoleUser,
-				Contents: underlying.MessageContents{
+			messages = append(messages, underlying.NewMessage(
+				underlying.RoleUser,
+				underlying.MessageContents{
 					underlying.NewUnresolvedSkillContent(skill),
 				},
-			})
+			))
 		}
 
 		if err := a.Run(ctx, messages); err != nil {

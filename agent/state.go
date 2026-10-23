@@ -69,7 +69,6 @@ func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) *underlying.M
 		Role:     chunk.Role,
 		Contents: chunk.Contents,
 	}
-	s.Messages = append(s.Messages, assistant)
 
 	for _, content := range chunk.Contents {
 		if call, ok := content.(*underlying.ToolCallContent); ok {

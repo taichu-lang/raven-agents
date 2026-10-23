@@ -189,7 +189,7 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 		Turn:     turn.TurnSeq,
 		Model:    a.State.Model,
 		Provider: "openai",
-		Input:    input,
+		Messages: messages,
 	})
 	defer func() {
 		_ = a.Store.UpdateTurn(ctx, &a.State.TurnContext)
@@ -197,8 +197,7 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 	}()
 
 	// Add user message first, as the tool selector might depend on the latest user message.
-	a.State.Messages = append(a.State.Messages, messages...)
-	a.saveMessages(ctx, messages)
+	a.checkpoint(ctx, messages)
 
 	// The system and tools prompt should keep immutable during the turn.
 	a.State.Tools = a.ToolRegistry.Active(a.State)
@@ -230,19 +229,16 @@ func (a *Agent) iterate(
 	ctx context.Context,
 	opts []underlying.WithGenOption,
 ) error {
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventIterationStart, a.State.Iterations)
 	// tools are returned from the previous iteration, and should be invoked first.
 	if len(a.State.ToolCalls) > 0 {
 		a.invokeToolCalls(ctx)
 	}
 
-	messages := a.State.Messages
-
-	a.onEvent(ctx, event.SourceTypeAgent, event.EventIterationStart, &event.IterationStartPayload{
-		Iteration: a.State.Iterations,
-		Input:     messages,
-	})
-
-	for chunk, err := range a.LLM.Run(ctx, messages, opts...) {
+	// The input is captured at the call site so that it includes the tool results just added by
+	// invokeToolCalls; consumers can rely on llm.start preceding the delta/usage/complete events.
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMStart, a.State.Messages)
+	for chunk, err := range a.LLM.Run(ctx, a.State.Messages, opts...) {
 		if err != nil {
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMError, err)
 			return err
@@ -256,12 +252,15 @@ func (a *Agent) iterate(
 			// tool call. The assistant message id are same in this case. Filter out the duplicate
 			// assistant message and tool call content.
 			assistant := a.State.onFinalChunk(chunk)
-			a.saveMessages(ctx, []*underlying.Message{assistant})
+			a.checkpoint(ctx, []*underlying.Message{assistant})
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMComplete, assistant)
 		case underlying.ResponseChunkTypeUsage:
 			usage, _ := chunk.Contents[0].(*underlying.UsageContent)
 			if usage != nil {
 				a.State.TokenUsage += usage.TotalTokenCount
+				// The provider yields the usage chunk before the final one, so consumers can
+				// rely on llm.usage preceding llm.complete.
+				a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMUsage, usage)
 			}
 		}
 	}
@@ -286,7 +285,14 @@ func (a *Agent) onEvent(
 	}
 }
 
-func (a *Agent) saveMessages(ctx context.Context, messages []*underlying.Message) {
+func (a *Agent) checkpoint(ctx context.Context, messages []*underlying.Message) {
+	for _, msg := range messages {
+		if msg.ID == "" {
+			panic(fmt.Sprintf("message id is required: %v", msg))
+		}
+	}
+
+	a.State.Messages = append(a.State.Messages, messages...)
 	err := a.Store.StoreMessages(ctx, &a.State.TurnContext, messages)
 	if err != nil {
 		slog.Warn("failed to persistent messages into store", "err", err)
@@ -299,7 +305,7 @@ func (a *Agent) invokeToolCalls(ctx context.Context) {
 		return
 	}
 
-	result := &underlying.Message{Role: underlying.RoleTool}
+	result := underlying.NewMessage(underlying.RoleTool, nil)
 	tools := a.State.ToolCalls
 	if len(tools) == 1 {
 		result.Contents = append(result.Contents, a.invokeOneTool(ctx, tools[0]))
@@ -322,8 +328,9 @@ func (a *Agent) invokeToolCalls(ctx context.Context) {
 	}
 
 	a.recordActivatedSkills(tools, result)
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventToolResult, result)
 
-	a.State.Messages = append(a.State.Messages, result)
+	a.checkpoint(ctx, []*underlying.Message{result})
 	a.State.ToolCalls = tools[:0]
 }
 
@@ -373,6 +380,8 @@ func (a *Agent) invokeOneTool(
 			true,
 		)
 	}
+
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventToolCall, call)
 
 	out, err := t.Call(ctx, call.Arguments)
 	if err != nil {

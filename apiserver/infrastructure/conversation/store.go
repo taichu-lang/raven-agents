@@ -28,6 +28,10 @@ func NewConversationStore(db *bun.DB, logger *slog.Logger) *ConversationStore {
 	}
 }
 
+func (s *ConversationStore) GetUnderlying() *bun.DB {
+	return s.db
+}
+
 // Create persists a new conversation. The caller owns the conversation id, the creation timestamp
 // is assigned here when it is left empty.
 func (s *ConversationStore) Create(ctx context.Context, conversation *ConversationModel) error {
@@ -62,17 +66,17 @@ func (s *ConversationStore) Create(ctx context.Context, conversation *Conversati
 }
 
 // UpdateTitle renames the conversation.
-func (s *ConversationStore) UpdateTitle(ctx context.Context, conversationID, title string) error {
+func (s *ConversationStore) UpdateTitle(ctx context.Context, id int64, title string) error {
 	result, err := s.db.NewUpdate().
 		Model((*ConversationModel)(nil)).
 		Set("title = ?", title).
-		Where("conversation_id = ?", conversationID).
+		Where("id = ?", id).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("update title of conversation %q: %w", conversationID, err)
+		return fmt.Errorf("update title of conversation %d: %w", id, err)
 	}
 
-	return affected(result, conversationID)
+	return affected(result)
 }
 
 // UpdateMetadata replaces the metadata of the conversation.
@@ -94,7 +98,7 @@ func (s *ConversationStore) UpdateMetadata(
 		return fmt.Errorf("update metadata of conversation %q: %w", conversationID, err)
 	}
 
-	return affected(result, conversationID)
+	return affected(result)
 }
 
 // Delete removes the conversation. The messages of the conversation are not touched, they are owned
@@ -108,7 +112,7 @@ func (s *ConversationStore) Delete(ctx context.Context, conversationID string) e
 		return fmt.Errorf("delete conversation %q: %w", conversationID, err)
 	}
 
-	return affected(result, conversationID)
+	return affected(result)
 }
 
 func (s *ConversationStore) Get(ctx context.Context, conversationID string) (*ConversationModel, error) {
@@ -152,14 +156,14 @@ func (s *ConversationStore) List(
 }
 
 // affected turns an update or delete that matched no row into ErrConversationNotFound.
-func affected(result sql.Result, conversationID string) error {
+func affected(result sql.Result) error {
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("rows affected of conversation %q: %w", conversationID, err)
+		return fmt.Errorf("rows affected of conversation: %w", err)
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("%w: %s", ErrConversationNotFound, conversationID)
+		return ErrConversationNotFound
 	}
 
 	return nil

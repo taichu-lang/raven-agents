@@ -18,11 +18,15 @@ const (
 	EventTurnEnd        EventName = "turn.end"
 	EventIterationStart EventName = "iteration.start"
 	EventIterationEnd   EventName = "iteration.end"
+	EventLLMStart       EventName = "llm.start"
 	EventLLMDelta       EventName = "llm.delta"
+	EventLLMUsage       EventName = "llm.usage"
 	EventLLMComplete    EventName = "llm.complete"
 	EventLLMError       EventName = "llm.error"
 	EventHumanApproval  EventName = "runtime.hitl"
 	EventRuntimeError   EventName = "runtime.error"
+	EventToolCall       EventName = "tool.call"
+	EventToolResult     EventName = "tool.result"
 )
 
 type Event struct {
@@ -36,10 +40,5 @@ type TurnStartPayload struct {
 	Turn     int64
 	Model    string
 	Provider string
-	Input    []*underlying.Message `json:"input"`
-}
-
-type IterationStartPayload struct {
-	Iteration int64
-	Input     []*underlying.Message
+	Messages []*underlying.Message `json:"messages"`
 }

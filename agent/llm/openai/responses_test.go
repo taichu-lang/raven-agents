@@ -16,12 +16,9 @@ func TestGen(t *testing.T) {
 	})
 
 	iter := p.Gen(context.Background(), []*underlying.Message{
-		{
-			Role: underlying.RoleUser,
-			Contents: underlying.MessageContents{
-				underlying.NewTextContent("1 + 1 = ?"),
-			},
-		},
+		underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
+			underlying.NewTextContent("1 + 1 = ?"),
+		}),
 	}, &underlying.GenOptions{Stream: false})
 
 	for chunk, err := range iter {
@@ -41,12 +38,9 @@ func TestGenStream(t *testing.T) {
 	})
 
 	iter := p.Gen(context.Background(), []*underlying.Message{
-		{
-			Role: underlying.RoleUser,
-			Contents: underlying.MessageContents{
-				underlying.NewTextContent("hi"),
-			},
-		},
+		underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
+			underlying.NewTextContent("hi"),
+		}),
 	}, nil)
 
 	for chunk, err := range iter {
@@ -77,12 +71,9 @@ func TestStructuredOutput(t *testing.T) {
 	})
 
 	response := p.Gen(context.Background(), []*underlying.Message{
-		{
-			Role: underlying.RoleUser,
-			Contents: underlying.MessageContents{
-				underlying.NewTextContent("how can I solve 8x + 7 = -23"),
-			},
-		},
+		underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
+			underlying.NewTextContent("how can I solve 8x + 7 = -23"),
+		}),
 	}, underlying.ApplyGenOptions([]underlying.WithGenOption{underlying.WithStream(true), underlying.WithOutputFormat[MathReasoning]()}))
 
 	for chunk, err := range response {

@@ -98,6 +98,15 @@ func (p *Provider) Gen(
 				return
 			}
 
+			// Ensure that `usage` event comes before `final` event, matching the streaming order.
+			if usage := toUsageContent(response.Usage); usage != nil {
+				yield(&underlying.ResponseChunk{
+					Type:     underlying.ResponseChunkTypeUsage,
+					Role:     underlying.RoleAssistant,
+					Contents: underlying.MessageContents{usage},
+				}, nil)
+			}
+
 			for _, out := range response.Output {
 				switch out := out.AsAny().(type) {
 				case responses.ResponseOutputMessage:
@@ -116,16 +125,6 @@ func (p *Provider) Gen(
 					}, nil)
 				}
 			}
-
-			// TODO(Leo): event order, can usage event before final event for all providers ?
-			if usage := toUsageContent(response.Usage); usage != nil {
-				yield(&underlying.ResponseChunk{
-					Type:     underlying.ResponseChunkTypeUsage,
-					Role:     underlying.RoleAssistant,
-					Contents: underlying.MessageContents{usage},
-				}, nil)
-			}
-
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package observability
 
-// Fork from: https://github.com/Arize-ai/openinference/blob/main/go/openinference-semantic-conventions/attributes.go
+// Fork from:
+// https://github.com/Arize-ai/openinference/blob/main/go/openinference-semantic-conventions/attributes.go
 
 // Span-level attributes — set on the span representing the operation.
 const (
@@ -215,6 +216,14 @@ const (
 	MessageContentSignature        = "message_content.signature"
 	MessageContentData             = "message_content.data"
 	MessageContentEncryptedContent = "message_content.encrypted_content"
+)
+
+// Skill-content attributes — nested under MessageContents.{i} when
+// MessageContentType is "skill". They capture the skill selection marker
+// disclosed to the model for the turn.
+const (
+	MessageContentSkillName        = "message_content.skill.name"
+	MessageContentSkillDescription = "message_content.skill.description"
 )
 
 // Image attributes — nested under MessageContentImage, InputImages or OutputImages.

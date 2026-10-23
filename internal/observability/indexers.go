@@ -74,6 +74,20 @@ func LLMOutputMessageContentKey(i int) string {
 	return llmMessageKey(LLMOutputMessages, i, MessageContent)
 }
 
+// LLMInputMessageContentsKey returns the attribute key for a field of the
+// j-th content item on the i-th input message, e.g.
+// "llm.input_messages.0.message.contents.0.message_content.text"
+// when child == MessageContentText.
+func LLMInputMessageContentsKey(i, j int, child string) string {
+	return llmMessageContentItemKey(LLMInputMessages, i, j, child)
+}
+
+// LLMOutputMessageContentsKey returns the attribute key for a field of the
+// j-th content item on the i-th output message.
+func LLMOutputMessageContentsKey(i, j int, child string) string {
+	return llmMessageContentItemKey(LLMOutputMessages, i, j, child)
+}
+
 // LLMOutputMessageToolCallKey returns the attribute key for the j-th tool
 // call on the i-th output message, e.g.
 // "llm.output_messages.0.message.tool_calls.0.tool_call.function.name"
@@ -144,4 +158,11 @@ func OutputImageKey(i int, child string) string {
 // where the child is one of the Message* constants.
 func llmMessageKey(prefix string, i int, child string) string {
 	return prefix + "." + strconv.Itoa(i) + "." + child
+}
+
+// llmMessageContentItemKey is the internal builder for
+// "{prefix}.{i}.message.contents.{j}.{child}" keys where the child is one
+// of the MessageContent* constants.
+func llmMessageContentItemKey(prefix string, i, j int, child string) string {
+	return prefix + "." + strconv.Itoa(i) + "." + MessageContents + "." + strconv.Itoa(j) + "." + child
 }

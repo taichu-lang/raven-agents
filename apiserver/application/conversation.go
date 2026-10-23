@@ -3,13 +3,20 @@ package application
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/internal/event"
 )
+
+type TitleGeneration struct {
+	done sync.WaitGroup
+}
 
 // GetConversations returns one cursor page of the conversations of a user, the most recently
 // created first. from is the id of the last item of the previous page, zero starts from the latest.
@@ -64,21 +71,55 @@ func (s *ChatService) GetConversation(
 	return nil, err
 }
 
-func (s *ChatService) genConversationTitle(ctx context.Context, req *domain.ChatRequest) string {
-	runner := llm.NewRunner(&underlying.ProviderOptions{
-		ApiKey:       s.cfg.ApiKey,
-		Endpoint:     s.cfg.Endpoint,
-		Instructions: s.cfg.Prompt.TitleGen,
-		Model:        req.Model,
-	})
+func (s *ChatService) genConversationTitle(
+	ctx context.Context,
+	req *domain.ChatRequest,
+	c *conversation.ConversationModel,
+	bus event.Bus,
+) *TitleGeneration {
+	gen := &TitleGeneration{}
+	if c.Title == "" {
+		gen.done.Add(1)
+		runner := llm.NewRunner(&underlying.ProviderOptions{
+			ApiKey:       s.cfg.ApiKey,
+			Endpoint:     s.cfg.Endpoint,
+			Instructions: s.cfg.Prompt.TitleGen,
+			Model:        req.Model,
+		})
+		go func() {
+			title := gen.generate(ctx, runner, req.Text)
+			if title != "" {
+				if err := s.store.UpdateTitle(ctx, c.ID, title); err != nil {
+					s.logger.Warn("database error", "err", err)
+				}
 
+				bus.Emit(ctx, &event.Event{
+					ID:     uuid.NewString(),
+					Source: event.SourceTypeAgent,
+					Name:   EventConversationStart,
+					Payload: &domain.Conversation{
+						ID:             c.ID,
+						ConversationID: c.ConversationID,
+						Title:          title,
+					},
+				})
+			}
+
+			gen.done.Done()
+		}()
+	}
+
+	return gen
+}
+
+func (g *TitleGeneration) generate(ctx context.Context, runner *llm.Runner, input string) string {
 	var title string
 	for chunk, err := range runner.Run(ctx, []*underlying.Message{
 		{
 			ID:   uuid.NewString(),
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{
-				underlying.NewTextContent(req.Text),
+				underlying.NewTextContent(input),
 			},
 		},
 	}, underlying.WithStream(false)) {
@@ -89,4 +130,8 @@ func (s *ChatService) genConversationTitle(ctx context.Context, req *domain.Chat
 	}
 
 	return title
+}
+
+func (g *TitleGeneration) wait() {
+	g.done.Wait()
 }
