@@ -89,6 +89,7 @@ func (s *StoreRef) insertNextTurn(
 		ConversationID: conversationID,
 		UserMessageID:  userMessageID,
 		Status:         TurnStatusRunning,
+		PendingTools:   json.RawMessage(`[]`),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -130,16 +131,23 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 		return errors.New("turn context is nil")
 	}
 
+	pendingTools, err := json.Marshal(append(make([]string, 0, len(turnContext.PendingTools)),
+		turnContext.PendingTools...))
+	if err != nil {
+		return fmt.Errorf("encode pending tools: %w", err)
+	}
+
 	turn := &TurnModel{
-		Status:     turnContext.Status,
-		Iterations: turnContext.Iterations,
-		TokensUsed: turnContext.TokenUsage,
-		UpdatedAt:  time.Now().Unix(),
+		Status:       turnContext.Status,
+		Iterations:   turnContext.Iterations,
+		TokensUsed:   turnContext.TokenUsage,
+		PendingTools: pendingTools,
+		UpdatedAt:    time.Now().Unix(),
 	}
 
 	result, err := s.db.NewUpdate().
 		Model(turn).
-		Column("status", "iterations", "tokens_used", "updated_at").
+		Column("status", "iterations", "tokens_used", "pending_tools", "updated_at").
 		Where("conversation_id = ?", turnContext.ConversationID).
 		Where("turn_seq = ?", turnContext.TurnSeq).
 		Exec(ctx)
@@ -160,6 +168,26 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 	)
 
 	return nil
+}
+
+// LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil when the
+// conversation has no turn yet.
+func (s *StoreRef) LoadLatestTurn(ctx context.Context, conversationID string) (*TurnModel, error) {
+	turn := new(TurnModel)
+	if err := s.db.NewSelect().
+		Model(turn).
+		Where("conversation_id = ?", conversationID).
+		Order("turn_seq DESC").
+		Limit(1).
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("load latest turn of conversation %s: %w", conversationID, err)
+	}
+
+	return turn, nil
 }
 
 // StoreMessages persists the messages of a single conversation turn. Messages carrying a message id

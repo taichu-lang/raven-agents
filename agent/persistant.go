@@ -21,6 +21,9 @@ type Repository interface {
 
 	UpdateTurn(ctx context.Context, turnContext *persistent.TurnContext) error
 
+	// LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil if none.
+	LoadLatestTurn(ctx context.Context, conversationID string) (*persistent.TurnModel, error)
+
 	// StoreMessages persists the messages produced by a single conversation turn. Scope carries the
 	// conversation attributes that an underlying.Message does not know about.
 	StoreMessages(

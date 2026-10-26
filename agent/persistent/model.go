@@ -1,6 +1,8 @@
 package persistent
 
 import (
+	"encoding/json"
+
 	"github.com/uptrace/bun"
 )
 
@@ -40,6 +42,10 @@ type TurnModel struct {
 
 	// LastMessageID is the most recent message persisted for the turn.
 	LastMessageID string `bun:"last_message_id,notnull"`
+
+	// PendingTools holds the IDs of the tool calls waiting for the user's response while the turn is in
+	// waiting_approval; the calls themselves live in the messages.
+	PendingTools json.RawMessage `bun:"pending_tools,notnull"`
 
 	// CreatedAt is a unix timestamp in seconds, assigned by the application layer.
 	CreatedAt int64 `bun:"created_at,notnull"`

@@ -37,6 +37,10 @@ func (d *DiscardStore) UpdateTurn(
 	return nil
 }
 
+func (d *DiscardStore) LoadLatestTurn(ctx context.Context, conversationID string) (*TurnModel, error) {
+	return nil, nil
+}
+
 func (d *DiscardStore) StoreMessages(
 	ctx context.Context,
 	turnContext *TurnContext,

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path"
@@ -51,6 +52,10 @@ func (s *ChatService) Chat(
 	ctx context.Context,
 	req *domain.ChatRequest,
 ) (<-chan *event.Event, error) {
+	if req.Model == "" {
+		req.Model = s.cfg.DefaultModel
+	}
+
 	c, err := s.store.Get(ctx, req.ConversationID)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
@@ -92,23 +97,8 @@ func (s *ChatService) Chat(
 			titleGen.wait()
 			bus.Unsubscribe(subscription.ID)
 		}()
-		messages := make([]*underlying.Message, 0, 1+len(skills))
-		messages = append(messages, underlying.NewMessage(
-			underlying.RoleUser,
-			underlying.MessageContents{
-				underlying.NewTextContent(req.Text),
-			},
-		))
-		for _, skill := range skills {
-			messages = append(messages, underlying.NewMessage(
-				underlying.RoleUser,
-				underlying.MessageContents{
-					underlying.NewUnresolvedSkillContent(skill),
-				},
-			))
-		}
-
-		if err := a.Run(ctx, messages); err != nil {
+		runErr := s.runTurn(ctx, a, req, skills)
+		if runErr != nil {
 			// Report the failure down the stream so that it keeps its place in the order of the events the
 			// consumer has already seen. ctx is detached because the failure is usually the cancellation
 			// itself, and the event would then be dropped by the bus.
@@ -116,7 +106,7 @@ func (s *ChatService) Chat(
 				ID:      uuid.NewString(),
 				Source:  event.SourceTypeRuntime,
 				Name:    event.EventRuntimeError,
-				Payload: err,
+				Payload: runErr,
 			})
 		}
 
@@ -137,4 +127,42 @@ func (s *ChatService) resolveSkills(skills []skill.Skill) []string {
 	}
 
 	return names
+}
+
+// runTurn starts a new turn from the user's text, or resumes the paused one with the answers to the
+// question the model asked.
+func (s *ChatService) runTurn(
+	ctx context.Context,
+	a *agent.Agent,
+	req *domain.ChatRequest,
+	skills []string,
+) error {
+	if req.Resume != nil {
+		answers, err := json.Marshal(req.Resume.Answers)
+		if err != nil {
+			return err
+		}
+
+		return a.Resume(ctx, []*underlying.ToolResultContent{
+			underlying.NewToolResultContent(req.Resume.ID, req.Resume.Name, string(answers), false),
+		})
+	}
+
+	messages := make([]*underlying.Message, 0, 1+len(skills))
+	messages = append(messages, underlying.NewMessage(
+		underlying.RoleUser,
+		underlying.MessageContents{
+			underlying.NewTextContent(req.Text),
+		},
+	))
+	for _, skill := range skills {
+		messages = append(messages, underlying.NewMessage(
+			underlying.RoleUser,
+			underlying.MessageContents{
+				underlying.NewUnresolvedSkillContent(skill),
+			},
+		))
+	}
+
+	return a.Run(ctx, messages)
 }

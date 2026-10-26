@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/internal/event"
 )
 
@@ -86,6 +84,11 @@ func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
 	tools := h.State.ToolCalls
 	h.State.ToolCalls = tools[:0]
 	for _, call := range tools {
+		if call.Name == ToolNameQuestion {
+			h.State.Pending = append(h.State.Pending, call)
+			continue
+		}
+
 		output, err := h.Hooks.Run(ctx, &hook.Input{
 			Event: hook.EventPreToolUse,
 			Tool: &hook.ToolInput{
@@ -107,12 +110,9 @@ func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
 			)
 
 		case hook.PermissionAsk:
-			h.State.Status = persistent.TurnStatusWaitingApproval
-			h.State.Pending = append(h.State.Pending, &PendingApproval{
-				ToolCall:    call,
-				Reason:      output.Reason,
-				RequestedAt: time.Now(),
-			})
+			// The call is held back for the user to approve; invokeToolCalls moves the state to
+			// waiting_approval once every call has been triaged.
+			h.State.Pending = append(h.State.Pending, call)
 
 		case hook.PermissionAllow:
 			if output.Tool != nil && output.Tool.UpdatedArgs != nil {
@@ -133,7 +133,7 @@ func (h *Agent) beforeToolCall(ctx context.Context) (bool, error) {
 	}
 
 	if len(result.Contents) > 0 {
-		h.State.Messages = append(h.State.Messages, result)
+		h.checkpoint(ctx, []*underlying.Message{result})
 	}
 
 	return continueInvokeCalls, nil

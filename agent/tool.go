@@ -6,9 +6,16 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
+	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/taichu-lang/raven-agents/tool/functool"
+)
+
+const (
+	ToolNameExec     string = "exec-command"
+	ToolNameQuestion string = "question"
 )
 
 type ToolActiveFunc func(state *AgentState) bool
@@ -81,7 +88,7 @@ func NewExecTool(sb sandbox.Sandbox) tool.FuncTool {
 	}
 
 	execTool, err := functool.New(functool.Config{
-		Name: "exec-command",
+		Name: ToolNameExec,
 		Description: "Runs a shell command in the sandbox and returns its output. " +
 			"The interpreter is part of the command line itself, ex: \"python3 main.py\" or \"node script.mjs\".",
 	}, func(ctx context.Context, input ExecToolInput) (string, error) {
@@ -140,4 +147,45 @@ func endWithNewline(text *strings.Builder) {
 	if text.Len() > 0 && !strings.HasSuffix(text.String(), "\n") {
 		text.WriteString("\n")
 	}
+}
+
+// Definition of builtin `question` tool.
+
+type Option struct {
+	Label       string `json:"label"       jsonschema:"User-facing label (1-5 words)."`
+	Description string `json:"description" jsonschema:"One short sentence explaining impact/tradeoff if selected."`
+}
+
+type Question struct {
+	ID       string   `json:"id"       jsonschema:"Stable identifier for mapping answers (snake_case)."`
+	Header   string   `json:"header"   jsonschema:"Short header label shown in the UI (12 or fewer chars)."`
+	Question string   `json:"question" jsonschema:"Single-sentence prompt shown to the user."`
+	Options  []Option `json:"options"  jsonschema:"Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with '(Recommended)'. Do not include an 'Other' option in this list; the client will add a free-form 'Other' option automatically."`
+}
+
+type QuestionToolInput struct {
+	Questions []Question `json:"questions" jsonschema:"Questions to show the user. Prefer 1 and do not exceed 3."`
+}
+
+func NewQuestionTool(bus event.Bus) tool.FuncTool {
+	questionTool, err := functool.New(functool.Config{
+		Name:        ToolNameQuestion,
+		Description: "Use this tool when you need to ask the user questions during execution. This allows you to:\n1. Gather user preferences or requirements\n2. Clarify ambiguous instructions\n3. Get decisions on implementation choices as you work\n4. Offer choices to the user about what direction to take.\n\nUsage notes:\n- A \"Type your own answer\" option is added automatically; don't include a separate option for free form answers\n- If you recommend a specific option, make that the first option in the list and add \"(Recommended)\" at the end of the label",
+	}, func(ctx context.Context, input QuestionToolInput) (string, error) {
+		bus.Emit(ctx, &event.Event{
+			ID:     uuid.NewString(),
+			Source: event.SourceTypeAgent,
+			Name:   event.EventHumanApproval,
+			Payload: &event.HumanApprovalPayload{
+				Scope: event.HumanApprovalScopeQuestion,
+				Data:  &input,
+			},
+		})
+		return "", nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return questionTool
 }

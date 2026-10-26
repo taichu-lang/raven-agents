@@ -87,8 +87,8 @@ func (p *Provider) Gen(
 				}
 			}
 
-			if streaming.Err() != nil {
-				yield(nil, streaming.Err())
+			if err := streaming.Err(); err != nil {
+				yield(nil, err)
 			}
 		} else {
 			response, err := p.get(req)

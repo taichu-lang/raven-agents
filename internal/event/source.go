@@ -42,3 +42,15 @@ type TurnStartPayload struct {
 	Provider string
 	Messages []*underlying.Message `json:"messages"`
 }
+
+type HumanApprovalScope string
+
+const (
+	HumanApprovalScopePermission HumanApprovalScope = "permission"
+	HumanApprovalScopeQuestion   HumanApprovalScope = "question"
+)
+
+type HumanApprovalPayload struct {
+	Scope HumanApprovalScope `json:"scope"`
+	Data  interface{}        `json:"data"`
+}

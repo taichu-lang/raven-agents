@@ -90,10 +90,9 @@ func (a *Agent) init(options *AgentOptions) {
 		a.Store = store
 	}
 
-	// As the Agent instance can be used in multi-turn conversation, ex: keep the Agent instance
-	// alive in a RunManager in a standalone environment, restore the previous turns here rather
-	// than before each turn.
-	if err := a.restore(options.ConversationID); err != nil {
+	// As the Agent instance can be used in multi-turn conversation, ex: keep the Agent instance alive in a
+	// RunManager in a standalone environment, restore the previous turns here rather than before each turn.
+	if err := a.restoreIfPresent(options.ConversationID); err != nil {
 		panic(fmt.Errorf("failed to restore messages, %v", err))
 	}
 
@@ -145,6 +144,8 @@ func (a *Agent) addBuiltinTools() {
 	if a.Sandbox != nil {
 		a.ToolRegistry.Register(NewExecTool(a.Sandbox), nil)
 	}
+
+	a.ToolRegistry.Register(NewQuestionTool(a.EventBus), nil)
 }
 
 // Shutdown unsubscribes from the event bus and waits for the tracer goroutine to consume the events
@@ -192,13 +193,69 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 		Messages: messages,
 	})
 	defer func() {
-		_ = a.Store.UpdateTurn(ctx, &a.State.TurnContext)
+		a.saveTurn(ctx)
 		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
 	}()
 
 	// Add user message first, as the tool selector might depend on the latest user message.
 	a.checkpoint(ctx, messages)
 
+	return a.loop(ctx)
+}
+
+// Resume continues a turn that paused on a question (or approval) with the user's responses, one tool result
+// per pending tool call. The agent instance may be a fresh one: the pending calls are restored from the latest
+// turn of the conversation when the agent is created.
+func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultContent) error {
+	if a.State.Status != persistent.TurnStatusWaitingApproval || len(a.State.Pending) == 0 {
+		return errors.New("the conversation has no turn waiting for a response")
+	}
+
+	pending := a.State.Pending
+	results := make(map[string]*underlying.ToolResultContent, len(resume))
+	for _, r := range resume {
+		results[r.ToolCallID] = r
+	}
+
+	message := underlying.NewMessage(underlying.RoleTool, nil)
+	for _, call := range pending {
+		r, ok := results[call.ID]
+		if !ok {
+			return fmt.Errorf("missing response for tool call %q", call.ID)
+		}
+
+		delete(results, call.ID)
+		message.Contents = append(message.Contents, r)
+	}
+
+	if len(results) > 0 {
+		return fmt.Errorf("responses do not match any pending tool call: %d unknown", len(results))
+	}
+
+	// The turn goes on rather than starting over, so the counters restored from the store are kept.
+	a.State.StartedAt = time.Now()
+	a.State.Pending = a.State.Pending[:0]
+	a.State.Status = persistent.TurnStatusRunning
+
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
+		Turn:     a.State.TurnSeq,
+		Model:    a.State.Model,
+		Provider: "openai",
+		Messages: []*underlying.Message{message},
+	})
+	defer func() {
+		a.saveTurn(ctx)
+		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
+	}()
+
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventToolResult, message)
+	a.checkpoint(ctx, []*underlying.Message{message})
+
+	return a.loop(ctx)
+}
+
+// loop iterates until the turn is done, paused for the user, or failed.
+func (a *Agent) loop(ctx context.Context) error {
 	// The system and tools prompt should keep immutable during the turn.
 	a.State.Tools = a.ToolRegistry.Active(a.State)
 	opts := make([]underlying.WithGenOption, 0, len(a.State.Tools))
@@ -218,6 +275,12 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 			return err
 		}
 
+		// The turn paused on a human approval: the approval event has been emitted, and the deferred UpdateTurn
+		// saves the state, which the resume logic restores once the user responds.
+		if a.State.Status == persistent.TurnStatusWaitingApproval {
+			return nil
+		}
+
 		if len(a.State.ToolCalls) == 0 {
 			a.State.Status = persistent.TurnStatusDone
 			return nil
@@ -233,6 +296,13 @@ func (a *Agent) iterate(
 	// tools are returned from the previous iteration, and should be invoked first.
 	if len(a.State.ToolCalls) > 0 {
 		a.invokeToolCalls(ctx)
+
+		// The tool calls hit one that needs the user's approval: close the iteration and skip the LLM call, so
+		// Run saves the state and exits without touching the status.
+		if a.State.Status == persistent.TurnStatusWaitingApproval {
+			a.onEvent(ctx, event.SourceTypeAgent, event.EventIterationEnd, nil)
+			return nil
+		}
 	}
 
 	// The input is captured at the call site so that it includes the tool results just added by
@@ -248,9 +318,9 @@ func (a *Agent) iterate(
 		case underlying.ResponseChunkTypeDelta:
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMDelta, &chunk.Message)
 		case underlying.ResponseChunkTypeFinal:
-			// TODO(Leo): if using tools, llm might returns two assistant messages which declare the same
-			// tool call. The assistant message id are same in this case. Filter out the duplicate
-			// assistant message and tool call content.
+			// TODO(Leo): if using tools, llm might returns two assistant messages which declare the same tool
+			// call. The assistant message id are same in this case. Filter out the duplicate assistant message
+			// and tool call content.
 			assistant := a.State.onFinalChunk(chunk)
 			a.checkpoint(ctx, []*underlying.Message{assistant})
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMComplete, assistant)
@@ -258,8 +328,8 @@ func (a *Agent) iterate(
 			usage, _ := chunk.Contents[0].(*underlying.UsageContent)
 			if usage != nil {
 				a.State.TokenUsage += usage.TotalTokenCount
-				// The provider yields the usage chunk before the final one, so consumers can
-				// rely on llm.usage preceding llm.complete.
+				// The provider yields the usage chunk before the final one, so consumers can rely on llm.usage
+				// preceding llm.complete.
 				a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMUsage, usage)
 			}
 		}
@@ -300,8 +370,17 @@ func (a *Agent) checkpoint(ctx context.Context, messages []*underlying.Message) 
 	}
 }
 
+// invokeToolCalls runs the pending tool calls. When beforeToolCall holds back calls that need
+// the user's approval, it emits the human approval event and reports false; the state then goes
+// to waiting_approval, which iterate and Run check to pause the turn for the resume logic.
 func (a *Agent) invokeToolCalls(ctx context.Context) {
-	if continueInvoke, err := a.beforeToolCall(ctx); err != nil || !continueInvoke {
+	continueInvoke, err := a.beforeToolCall(ctx)
+	if err != nil {
+		return
+	}
+
+	if !continueInvoke {
+		a.State.Status = persistent.TurnStatusWaitingApproval
 		return
 	}
 

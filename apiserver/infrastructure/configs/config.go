@@ -17,6 +17,7 @@ type Config struct {
 	ApiKey       string                `yaml:"api_key"`
 	Endpoint     string                `yaml:"endpoint"`
 	Instructions string                `yaml:"instructions"`
+	DefaultModel string                `yaml:"default_model"`
 	Store        *database.StoreConfig `yaml:"store"`
 
 	// TODO(Leo): resolved from runtime?

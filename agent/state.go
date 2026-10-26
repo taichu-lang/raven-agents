@@ -9,12 +9,6 @@ import (
 	"github.com/taichu-lang/raven-agents/tool"
 )
 
-type PendingApproval struct {
-	ToolCall    *underlying.ToolCallContent
-	Reason      string `json:"reason,omitzero"`
-	RequestedAt time.Time
-}
-
 // AgentState represents the shared state of the agent, which can be accessed and modified by all nodes in the
 // graph. Fields in this struct are intended to be persistent, and can be resumed after a restart of the agent.
 type AgentState struct {
@@ -27,7 +21,7 @@ type AgentState struct {
 	ToolCalls []*underlying.ToolCallContent
 
 	// Pending is the list of actions waiting for human approval.
-	Pending []*PendingApproval
+	Pending []*underlying.ToolCallContent
 
 	// Skills holds the names of the skills the caller selected for this turn. beforeUserInput turns
 	// each selection into a Skill tool call and its tool result, so the instructions live in
@@ -48,6 +42,8 @@ func (s *AgentState) resetPerTurn() {
 	// model pulled in has already reached it as a tool result.
 	s.Skills = s.Skills[:0]
 	s.Activated = s.Activated[:0]
+	s.ToolCalls = s.ToolCalls[:0]
+	s.Pending = s.Pending[:0]
 	s.Iterations = 0
 	s.TokenUsage = 0
 	s.TokenCost = 0

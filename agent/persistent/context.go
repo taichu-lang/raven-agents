@@ -30,4 +30,7 @@ type TurnContext struct {
 	// TurnSeq is assigned after turn started.
 	TurnSeq int64
 	Status  TurnStatus
+
+	// PendingTools is the IDs of the tool calls waiting for the user's response.
+	PendingTools []string
 }
