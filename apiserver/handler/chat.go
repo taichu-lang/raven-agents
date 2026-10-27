@@ -83,6 +83,8 @@ func (h *ChatHandler) chat(c *gin.Context) {
 			case event.EventToolResult:
 				fallthrough
 			case event.EventHumanApproval:
+				fallthrough
+			case event.EventLLMReasoningDelta:
 				c.SSEvent(string(e.Name), e.Payload)
 
 			case event.EventTurnEnd:

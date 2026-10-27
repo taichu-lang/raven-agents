@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"text/template"
 
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
@@ -20,6 +21,7 @@ import (
 )
 
 const EventConversationStart = "conversation.start"
+const TemplateTitlePrompt = "title.prompt"
 
 type ChatService struct {
 	cfg             *configs.Config
@@ -27,18 +29,25 @@ type ChatService struct {
 	store           *conversation.ConversationStore
 	skillsDir       string
 	sandboxProvider sandbox.Provider
+	promptTemplate  *template.Template
 }
 
 func NewChatService(
 	cfg *configs.Config,
 	store *conversation.ConversationStore,
 ) *ChatService {
+	temp, err := template.New(TemplateTitlePrompt).Parse(cfg.Prompt.TitleGen)
+	if err != nil {
+		panic(err)
+	}
+
 	return &ChatService{
 		cfg:             cfg,
 		logger:          slog.With("service", "chat"),
 		store:           store,
 		skillsDir:       path.Join(cfg.AppDir, ".agents", "skills"),
 		sandboxProvider: local.NewProvider(),
+		promptTemplate:  temp,
 	}
 }
 

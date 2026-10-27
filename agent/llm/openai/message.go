@@ -57,11 +57,31 @@ type OutputMessage struct {
 	Content []InputMessageContent `json:"content,omitzero"`
 }
 
+// ReasoningItem is a reasoning input item sent back to the API on subsequent turns, so the model
+// keeps its reasoning context. EncryptedContent is required in stateless mode or when using zero
+// data retention; otherwise the item ID is enough for the API to look the reasoning up. The
+// display summary stored in ReasoningContent is deliberately not round-tripped: Summary is sent
+// as an empty list (the API requires the field to be present) since the encrypted content alone
+// carries the reasoning context.
+type ReasoningItem struct {
+	Type             string             `json:"type"` // Always is 'reasoning'.
+	ID               string             `json:"id,omitzero"`
+	Summary          []ReasoningSummary `json:"summary"`
+	EncryptedContent string             `json:"encrypted_content,omitzero"`
+}
+
+// ReasoningSummary is one summary part of a reasoning input item.
+type ReasoningSummary struct {
+	Type string `json:"type"` // Always is 'summary_text'.
+	Text string `json:"text"`
+}
+
 type InputItemUnion struct {
 	*InputMessage
 	*OutputMessage
 	*FunctionCall
 	*FunctionCallOutput
+	*ReasoningItem
 }
 
 // MarshalJSON serializes whichever variant is set. The embedded types share
@@ -78,6 +98,8 @@ func (i InputItemUnion) MarshalJSON() ([]byte, error) {
 		return json.Marshal(i.FunctionCall)
 	case i.FunctionCallOutput != nil:
 		return json.Marshal(i.FunctionCallOutput)
+	case i.ReasoningItem != nil:
+		return json.Marshal(i.ReasoningItem)
 	default:
 		return nil, fmt.Errorf("openai: InputItemUnion has no variant set")
 	}
@@ -138,6 +160,18 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 	chatContent := make([]InputMessageContent, 0, len(contents))
 
 	for _, mc := range contents {
+		if reasoning, ok := mc.(*underlying.ReasoningContent); ok {
+			items = append(items, &InputItemUnion{
+				ReasoningItem: &ReasoningItem{
+					Type:             "reasoning",
+					ID:               reasoning.ID,
+					Summary:          make([]ReasoningSummary, 0),
+					EncryptedContent: reasoning.EncryptedContent,
+				},
+			})
+			continue
+		}
+
 		if call, ok := mc.(*underlying.ToolCallContent); ok {
 			items = append(items, &InputItemUnion{
 				FunctionCall: &FunctionCall{

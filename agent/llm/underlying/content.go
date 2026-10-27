@@ -19,6 +19,10 @@ const (
 	ContentKindToolCall   ContentKind = "tool_call"
 	ContentKindToolResult ContentKind = "tool_result"
 
+	// ContentKindReasoning carries the reasoning of a reasoning model. How it reaches the model
+	// is left to each provider, as the shape of the request differs between model apis.
+	ContentKindReasoning ContentKind = "reasoning"
+
 	// ContentKindSkill discloses a skill to the model. How it reaches the model is left to each
 	// provider, as the shape of the request differs between model apis.
 	ContentKindSkill ContentKind = "skill"
@@ -161,6 +165,40 @@ func (t *ToolResultContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
+// ReasoningContent carries the reasoning produced by a reasoning model. Summary holds the
+// human-readable reasoning summary for display only (ex: the "thinking" section of the UI,
+// including history replay); it is never sent back to the provider. EncryptedContent is the
+// base64-encoded, provider-encrypted reasoning payload; it must be preserved and sent back on
+// subsequent turns so the model keeps its reasoning context (ex: stateless mode or ZDR).
+type ReasoningContent struct {
+	ID               string `json:"id,omitzero"`
+	Summary          string `json:"summary,omitzero"`
+	EncryptedContent string `json:"encrypted_content,omitzero"`
+}
+
+func NewReasoningContent(id, summary string) *ReasoningContent {
+	return &ReasoningContent{
+		ID:      id,
+		Summary: summary,
+	}
+}
+
+func (r ReasoningContent) Kind() ContentKind {
+	return ContentKindReasoning
+}
+
+func (r *ReasoningContent) MarshalJSON() ([]byte, error) {
+	type alias ReasoningContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(r),
+		Type:  r.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
 type DataContent struct {
 	MediaType MediaType `json:"media_type"`
 	Data      []byte    `json:"data"`
@@ -265,6 +303,8 @@ func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
 		content = new(ToolCallContent)
 	case ContentKindToolResult:
 		content = new(ToolResultContent)
+	case ContentKindReasoning:
+		content = new(ReasoningContent)
 	case ContentKindSkill:
 		content = new(SkillContent)
 	default:

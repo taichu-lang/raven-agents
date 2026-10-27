@@ -58,6 +58,69 @@ The framework is split into two layers:
 | Observability | [`internal/observability`](internal/observability), [`agent/trace.go`](agent/trace.go) | OpenTelemetry tracing wired from the event stream; structured `slog` logging throughout.                                                                                                                                                                                                                     |
 | API server    | [`apiserver`](apiserver), [`cmd/apiserver`](cmd/apiserver)                             | DDD-layered chat service (dependency rule: `handler → application → domain ← infrastructure`) exposing multi-turn conversations, skill selection and HITL resume over HTTP with SSE streaming.                                                                                                               |
 
+## Quickstart
+
+Run the API server locally in three steps.
+
+### 1. Set the environment variables
+
+The server reads its provider configuration from `configs/config.yml`, which expands two
+environment variables:
+
+```sh
+export RAVEN_APIKEY=<your-api-key>
+export RAVEN_API=<responses-api-endpoint>   # must be compatible with the OpenAI Responses API,
+                                            # e.g. https://api.openai.com/v1/responses
+```
+
+### 2. Configure the database
+
+Pick either SQLite or Postgres in the `store` section of `configs/config.yml`.
+
+SQLite (no extra setup):
+
+```yaml
+store:
+  sqlite:
+    path: "raven.db"
+```
+
+Postgres (create the database manually first):
+
+```sql
+CREATE DATABASE raven;
+```
+
+```yaml
+store:
+  postgres:
+    database: raven
+    address: "localhost:5432"
+    user: postgres
+    password: postgres
+    insecure: true
+```
+
+Schema migrations are applied automatically on startup.
+
+### 3. Build and run
+
+Build the apiserver binary with [Task](https://taskfile.dev/):
+
+```sh
+task apiserver
+```
+
+Then start it from the repository root (the config path `configs/config.yml` is resolved
+relative to the working directory). The server listens on `http://localhost:8001`:
+
+```sh
+./bin/apiserver
+```
+
+To try it out with a frontend, use the companion UI
+[raven-ai](https://github.com/taichu-lang/raven-ai), which is adapted for this agent.
+
 ## Examples
 
 All examples read the provider configuration from environment variables:

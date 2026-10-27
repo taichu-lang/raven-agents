@@ -59,6 +59,68 @@
 设计文档：[整体架构](docs/architecture.md) · [Skill 设计](docs/skills.md) ·
 [Sandbox 设计](docs/sandbox.md)
 
+## 快速开始
+
+三步在本地运行 API 服务。
+
+### 1. 设置环境变量
+
+服务从 `configs/config.yml` 读取 provider 配置，其中会展开两个环境变量：
+
+```sh
+export RAVEN_APIKEY=<your-api-key>
+export RAVEN_API=<responses-api-endpoint>   # 必须兼容 OpenAI Responses API，
+                                            # 例如 https://api.openai.com/v1/responses
+```
+
+### 2. 配置数据库
+
+在 `configs/config.yml` 的 `store` 段中选择 SQLite 或 Postgres 之一。
+
+SQLite（无需额外准备）：
+
+```yaml
+store:
+  sqlite:
+    path: "raven.db"
+```
+
+Postgres（需要先手动创建数据库）：
+
+```sql
+CREATE DATABASE raven;
+```
+
+```yaml
+store:
+  postgres:
+    database: raven
+    address: "localhost:5432"
+    user: postgres
+    password: postgres
+    insecure: true
+```
+
+schema 迁移在启动时自动执行。
+
+### 3. 构建并运行
+
+使用 [Task](https://taskfile.dev/) 构建 apiserver 二进制：
+
+```sh
+task apiserver
+```
+
+然后在仓库根目录启动（配置路径 `configs/config.yml` 相对工作目录解析）。服务监听
+`http://localhost:8001`：
+
+```sh
+./bin/apiserver
+```
+
+想配合前端试用，可以使用配套 UI [raven-ai](https://github.com/taichu-lang/raven-ai)，
+它已针对当前 agent 做了适配。
+
 ## 示例
 
 所有示例通过环境变量读取 provider 配置：

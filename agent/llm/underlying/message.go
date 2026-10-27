@@ -29,9 +29,10 @@ const FinishReasonDone = "done"
 type ResponseChunkType string
 
 const (
-	ResponseChunkTypeDelta ResponseChunkType = "delta"
-	ResponseChunkTypeFinal ResponseChunkType = "final"
-	ResponseChunkTypeUsage ResponseChunkType = "usage"
+	ResponseChunkTypeReasoningDelta ResponseChunkType = "reasoning.delta"
+	ResponseChunkTypeDelta          ResponseChunkType = "delta"
+	ResponseChunkTypeFinal          ResponseChunkType = "final"
+	ResponseChunkTypeUsage          ResponseChunkType = "usage"
 )
 
 type ResponseChunk struct {

@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"strings"
+
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
@@ -29,9 +31,39 @@ func streamEventToResponse(
 			Contents: underlying.MessageContents{underlying.NewTextContent(e.Delta)},
 		}
 
+	// The Responses API streams two kinds of reasoning deltas:
+	// - response.reasoning_text.delta: the raw chain-of-thought tokens, only sent when the request includes
+	//   "reasoning.text"; verbose and unpolished, it is not meant for end users, so it is deliberately not
+	//   consumed here.
+	// - response.reasoning_summary_text.delta: a condensed, human-readable summary of the reasoning, enabled
+	//   via the reasoning.summary request option; this is what user-facing agents display (ex: ChatGPT's
+	//   "thinking" section), so it is the one handled below.
+
+	// Some providers (ex: qwen3.8-max) don't support encrypted_content, so with thinking mode enabled they only
+	// output the reasoning summary, which is also delivered via the response.reasoning_text.delta event.
+	// TODO(Leo): determine how to detect the form in which a model outputs its reasoning (raw text vs summary),
+	// so the two events can be handled accordingly.
+	case responses.ResponseReasoningTextDeltaEvent:
+		return nil, &underlying.ResponseChunk{
+			ID:       e.ItemID,
+			Type:     underlying.ResponseChunkTypeReasoningDelta,
+			Role:     underlying.RoleAssistant,
+			Contents: underlying.MessageContents{underlying.NewTextContent(e.Delta)},
+		}
+
+	case responses.ResponseReasoningSummaryTextDeltaEvent:
+		return nil, &underlying.ResponseChunk{
+			ID:       e.ItemID,
+			Type:     underlying.ResponseChunkTypeReasoningDelta,
+			Role:     underlying.RoleAssistant,
+			Contents: underlying.MessageContents{underlying.NewTextContent(e.Delta)},
+		}
+
 	case responses.ResponseOutputItemDoneEvent:
 		// One item is completed, no usage.
 
+	// TODO(Leo): if the response is incomplete, there is no 'response.completed' event. The assistant messages
+	// should be parsed in the 'response.output_item.done' event.
 	case responses.ResponseCompletedEvent:
 		// TODO(Leo): handle annotations.
 		chunk := &underlying.ResponseChunk{
@@ -47,6 +79,10 @@ func streamEventToResponse(
 
 			if call, ok := output.AsAny().(responses.ResponseFunctionToolCall); ok {
 				chunk.Contents = append(chunk.Contents, underlying.NewToolCallContent(call.CallID, call.Name, call.Arguments))
+			}
+
+			if reasoning, ok := output.AsAny().(responses.ResponseReasoningItem); ok {
+				chunk.Contents = append(chunk.Contents, reasoningItemToContent(reasoning))
 			}
 		}
 
@@ -79,6 +115,22 @@ func responsesToMessageContents(
 	}
 
 	return contents
+}
+
+// reasoningItemToContent converts a completed reasoning item from the response.completed event.
+// The summary parts are joined into Summary for display purposes only (ex: replaying the
+// "thinking" section from persisted history); it is NOT sent back to the API. Only the item ID
+// and the encrypted content round-trip: the encrypted content is the opaque payload the model
+// needs to keep its reasoning context on subsequent turns.
+func reasoningItemToContent(item responses.ResponseReasoningItem) *underlying.ReasoningContent {
+	var sb strings.Builder
+	for _, part := range item.Summary {
+		sb.WriteString(part.Text)
+	}
+
+	content := underlying.NewReasoningContent(item.ID, sb.String())
+	content.EncryptedContent = item.EncryptedContent
+	return content
 }
 
 func toUsageContent(usage responses.ResponseUsage) *underlying.UsageContent {

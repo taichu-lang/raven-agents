@@ -31,7 +31,8 @@ func (c *Config) Load() error {
 		return fmt.Errorf("config file not found, %w", err)
 	}
 
-	if err := yaml.Unmarshal(data, c); err != nil {
+	expanded := os.ExpandEnv(string(data))
+	if err := yaml.Unmarshal([]byte(expanded), c); err != nil {
 		return fmt.Errorf("invalid yaml, %w", err)
 	}
 

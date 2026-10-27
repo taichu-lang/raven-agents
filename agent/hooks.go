@@ -68,8 +68,7 @@ func fakeSkillToolID() string {
 	return "toolu_" + s // length = 30
 }
 
-// recordSelectedSkill folds a successfully resolved selection into the state of this turn, once
-// per name.
+// recordSelectedSkill folds a successfully resolved selection into the state of this turn, once per name.
 func (h *Agent) recordSelectedSkill(name string) {
 	if slices.Contains(h.State.Skills, name) {
 		return

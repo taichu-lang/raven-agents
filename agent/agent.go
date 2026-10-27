@@ -317,6 +317,8 @@ func (a *Agent) iterate(
 		switch chunk.Type {
 		case underlying.ResponseChunkTypeDelta:
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMDelta, &chunk.Message)
+		case underlying.ResponseChunkTypeReasoningDelta:
+			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMReasoningDelta, &chunk.Message)
 		case underlying.ResponseChunkTypeFinal:
 			// TODO(Leo): if using tools, llm might returns two assistant messages which declare the same tool
 			// call. The assistant message id are same in this case. Filter out the duplicate assistant message

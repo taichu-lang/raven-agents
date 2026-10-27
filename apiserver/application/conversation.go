@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -81,13 +82,22 @@ func (s *ChatService) genConversationTitle(
 	if c.Title == "" {
 		gen.done.Add(1)
 		runner := llm.NewRunner(&underlying.ProviderOptions{
-			ApiKey:       s.cfg.ApiKey,
-			Endpoint:     s.cfg.Endpoint,
-			Instructions: s.cfg.Prompt.TitleGen,
-			Model:        req.Model,
+			ApiKey:   s.cfg.ApiKey,
+			Endpoint: s.cfg.Endpoint,
+			Model:    req.Model,
 		})
+
+		var prompt bytes.Buffer
+		if err := s.promptTemplate.Execute(&prompt, map[string]interface{}{
+			"UserInput": req.Text,
+		}); err != nil {
+			s.logger.Warn("failed to build prompt for title generation", "err", err)
+			gen.done.Done()
+			return gen
+		}
+
 		go func() {
-			title := gen.generate(ctx, runner, req.Text)
+			title := gen.generate(ctx, runner, prompt.String())
 			if title != "" {
 				if err := s.store.UpdateTitle(ctx, c.ID, title); err != nil {
 					s.logger.Warn("database error", "err", err)

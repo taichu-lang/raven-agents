@@ -14,19 +14,20 @@ const (
 type EventName string
 
 const (
-	EventTurnStart      EventName = "turn.start"
-	EventTurnEnd        EventName = "turn.end"
-	EventIterationStart EventName = "iteration.start"
-	EventIterationEnd   EventName = "iteration.end"
-	EventLLMStart       EventName = "llm.start"
-	EventLLMDelta       EventName = "llm.delta"
-	EventLLMUsage       EventName = "llm.usage"
-	EventLLMComplete    EventName = "llm.complete"
-	EventLLMError       EventName = "llm.error"
-	EventHumanApproval  EventName = "runtime.hitl"
-	EventRuntimeError   EventName = "runtime.error"
-	EventToolCall       EventName = "tool.call"
-	EventToolResult     EventName = "tool.result"
+	EventTurnStart         EventName = "turn.start"
+	EventTurnEnd           EventName = "turn.end"
+	EventIterationStart    EventName = "iteration.start"
+	EventIterationEnd      EventName = "iteration.end"
+	EventLLMStart          EventName = "llm.start"
+	EventLLMDelta          EventName = "llm.delta"
+	EventLLMReasoningDelta EventName = "llm.reasoning.delta"
+	EventLLMUsage          EventName = "llm.usage"
+	EventLLMComplete       EventName = "llm.complete"
+	EventLLMError          EventName = "llm.error"
+	EventHumanApproval     EventName = "runtime.hitl"
+	EventRuntimeError      EventName = "runtime.error"
+	EventToolCall          EventName = "tool.call"
+	EventToolResult        EventName = "tool.result"
 )
 
 type Event struct {
