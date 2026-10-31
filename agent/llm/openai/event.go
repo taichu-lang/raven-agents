@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -78,11 +79,17 @@ func streamEventToResponse(
 			}
 
 			if call, ok := output.AsAny().(responses.ResponseFunctionToolCall); ok {
-				chunk.Contents = append(chunk.Contents, underlying.NewToolCallContent(call.CallID, call.Name, call.Arguments))
+				chunk.Contents = append(chunk.Contents, underlying.NewToolCallContent(call.CallID, call.Name, call.Namespace, call.Arguments))
 			}
 
 			if reasoning, ok := output.AsAny().(responses.ResponseReasoningItem); ok {
 				chunk.Contents = append(chunk.Contents, reasoningItemToContent(reasoning))
+			}
+
+			// There is no dedicated tool search SSE delta event: a client-executed search only surfaces as an
+			// output item of the completed response.
+			if searchCall, ok := output.AsAny().(responses.ResponseToolSearchCall); ok {
+				chunk.Contents = append(chunk.Contents, toolSearchCallToContent(searchCall))
 			}
 		}
 
@@ -117,11 +124,24 @@ func responsesToMessageContents(
 	return contents
 }
 
-// reasoningItemToContent converts a completed reasoning item from the response.completed event.
-// The summary parts are joined into Summary for display purposes only (ex: replaying the
-// "thinking" section from persisted history); it is NOT sent back to the API. Only the item ID
-// and the encrypted content round-trip: the encrypted content is the opaque payload the model
-// needs to keep its reasoning context on subsequent turns.
+// toolSearchCallToContent converts a tool_search_call output item. The SDK decodes the untyped Arguments field
+// via gjson, losing the byte-exact JSON, so the raw wire text is captured first and re-marshalling the decoded
+// value is only the fallback.
+func toolSearchCallToContent(call responses.ResponseToolSearchCall) *underlying.ToolSearchCallContent {
+	var args json.RawMessage
+	if call.JSON.Arguments.Valid() {
+		args = json.RawMessage(call.JSON.Arguments.Raw())
+	} else if call.Arguments != nil {
+		args, _ = json.Marshal(call.Arguments)
+	}
+
+	return underlying.NewToolSearchCallContent(call.ID, call.CallID, args)
+}
+
+// reasoningItemToContent converts a completed reasoning item from the response.completed event. The summary
+// parts are joined into Summary for display purposes only (ex: replaying the "thinking" section from persisted
+// history); it is NOT sent back to the API. Only the item ID and the encrypted content round-trip: the
+// encrypted content is the opaque payload the model needs to keep its reasoning context on subsequent turns.
 func reasoningItemToContent(item responses.ResponseReasoningItem) *underlying.ReasoningContent {
 	var sb strings.Builder
 	for _, part := range item.Summary {

@@ -11,6 +11,7 @@ import (
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/tool"
 )
 
 func main() {
@@ -43,7 +44,7 @@ func main() {
 		}
 	}()
 
-	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
+	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
 		Name:           "postgres-store",
 		UserID:         "user-0",
 		ConversationID: "conv-1",

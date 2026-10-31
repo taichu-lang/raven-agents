@@ -53,7 +53,7 @@ func (h *Agent) skillSelectionMessages(
 	toolID := fakeSkillToolID()
 	arguments, _ := json.Marshal(skillToolInput{Name: name})
 
-	call := underlying.NewToolCallContent(toolID, SkillToolName, string(arguments))
+	call := underlying.NewToolCallContent(toolID, SkillToolName, "", string(arguments))
 	// Add a tool call and let agent to load the skill using tool calling, rather than loading skill directly
 	// here.
 	h.State.ToolCalls = append(h.State.ToolCalls, call)

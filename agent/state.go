@@ -20,6 +20,11 @@ type AgentState struct {
 	// ToolCalls is the list of tools returned from llm, and to be called from agent.
 	ToolCalls []*underlying.ToolCallContent
 
+	// ToolSearches is the list of tool searches returned from llm. They are executed before the
+	// tool calls of the same iteration and their results are check-pointed right away, so they
+	// never enter the persisted turn state: a paused turn has no unanswered search.
+	ToolSearches []*underlying.ToolSearchCallContent
+
 	// Pending is the list of actions waiting for human approval.
 	Pending []*underlying.ToolCallContent
 
@@ -43,6 +48,7 @@ func (s *AgentState) resetPerTurn() {
 	s.Skills = s.Skills[:0]
 	s.Activated = s.Activated[:0]
 	s.ToolCalls = s.ToolCalls[:0]
+	s.ToolSearches = s.ToolSearches[:0]
 	s.Pending = s.Pending[:0]
 	s.Iterations = 0
 	s.TokenUsage = 0
@@ -69,6 +75,10 @@ func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) *underlying.M
 	for _, content := range chunk.Contents {
 		if call, ok := content.(*underlying.ToolCallContent); ok {
 			s.ToolCalls = append(s.ToolCalls, call)
+		}
+
+		if search, ok := content.(*underlying.ToolSearchCallContent); ok {
+			s.ToolSearches = append(s.ToolSearches, search)
 		}
 	}
 

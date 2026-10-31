@@ -28,7 +28,14 @@ const (
 	EventRuntimeError      EventName = "runtime.error"
 	EventToolCall          EventName = "tool.call"
 	EventToolResult        EventName = "tool.result"
+	EventToolSearch        EventName = "tool.search"
 )
+
+// ToolSearchPayload reports one executed tool search: the query and the names of the tools it resolved to.
+type ToolSearchPayload struct {
+	Query string   `json:"query"`
+	Tools []string `json:"tools"`
+}
 
 type Event struct {
 	ID      string

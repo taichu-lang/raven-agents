@@ -18,6 +18,7 @@ import (
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/sandbox/local"
+	"github.com/taichu-lang/raven-agents/tool"
 )
 
 const EventConversationStart = "conversation.start"
@@ -84,7 +85,7 @@ func (s *ChatService) Chat(
 	subscription := bus.Subscribe()
 
 	titleGen := s.genConversationTitle(ctx, req, c, bus)
-	a := agent.New(bus, agent.NewToolRegistry(), &agent.AgentOptions{
+	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         "1",
 		ConversationID: req.ConversationID,

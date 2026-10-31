@@ -121,7 +121,14 @@ func (p *Provider) Gen(
 					yield(&underlying.ResponseChunk{
 						Type:     underlying.ResponseChunkTypeFinal,
 						Role:     underlying.RoleAssistant,
-						Contents: underlying.MessageContents{underlying.NewToolCallContent(out.CallID, out.Name, out.Arguments)},
+						Contents: underlying.MessageContents{underlying.NewToolCallContent(out.CallID, out.Name, out.Namespace, out.Arguments)},
+					}, nil)
+
+				case responses.ResponseToolSearchCall:
+					yield(&underlying.ResponseChunk{
+						Type:     underlying.ResponseChunkTypeFinal,
+						Role:     underlying.RoleAssistant,
+						Contents: underlying.MessageContents{toolSearchCallToContent(out)},
 					}, nil)
 				}
 			}

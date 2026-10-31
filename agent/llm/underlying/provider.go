@@ -23,6 +23,11 @@ const (
 	ProtocolClaude Protocol = "claude"
 )
 
+// ToolSearchToolName is the broadcast name of the tool search entry (name as protocol): an
+// adapter that supports the native form (ex: OpenAI tool_search with client execution) renders
+// the tool carrying this name as the native item instead of a plain function tool.
+const ToolSearchToolName = "tool_search"
+
 // ProviderOptions is the constructor options of an instance of llm provider.
 // Different models in the same family may have different instructions, context
 // windows size, and conversation history (ex: reasoning) may not be directly

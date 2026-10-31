@@ -65,8 +65,8 @@ type OutputMessage struct {
 // carries the reasoning context.
 type ReasoningItem struct {
 	Type             string             `json:"type"` // Always is 'reasoning'.
-	ID               string             `json:"id,omitzero"`
-	Summary          []ReasoningSummary `json:"summary"`
+	ID               string             `json:"id"`
+	Summary          []ReasoningSummary `json:"summary,omitzero"`
 	EncryptedContent string             `json:"encrypted_content,omitzero"`
 }
 
@@ -82,12 +82,13 @@ type InputItemUnion struct {
 	*FunctionCall
 	*FunctionCallOutput
 	*ReasoningItem
+	*ToolSearchCallItem
+	*ToolSearchOutputItem
 }
 
-// MarshalJSON serializes whichever variant is set. The embedded types share
-// JSON field names (e.g. "role"/"content", "type"/"call_id"/"name"), so a
-// plain struct marshal would report those fields as ambiguous and drop them;
-// marshaling the set variant directly avoids that conflict.
+// MarshalJSON serializes whichever variant is set. The embedded types share JSON field names (e.g.
+// "role"/"content", "type"/"call_id"/"name"), so a plain struct marshal would report those fields as ambiguous
+// and drop them; marshaling the set variant directly avoids that conflict.
 func (i InputItemUnion) MarshalJSON() ([]byte, error) {
 	switch {
 	case i.InputMessage != nil:
@@ -100,6 +101,10 @@ func (i InputItemUnion) MarshalJSON() ([]byte, error) {
 		return json.Marshal(i.FunctionCallOutput)
 	case i.ReasoningItem != nil:
 		return json.Marshal(i.ReasoningItem)
+	case i.ToolSearchCallItem != nil:
+		return json.Marshal(i.ToolSearchCallItem)
+	case i.ToolSearchOutputItem != nil:
+		return json.Marshal(i.ToolSearchOutputItem)
 	default:
 		return nil, fmt.Errorf("openai: InputItemUnion has no variant set")
 	}
@@ -178,7 +183,24 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 					Type:      CallTypeFunction,
 					CallID:    call.ID,
 					Name:      call.Name,
+					Namespace: call.Namespace,
 					Arguments: call.Arguments,
+				},
+			})
+			continue
+		}
+
+		// A tool search is a top-level item (sibling of function_call), not message content; it must be handled
+		// before the inputContentFromAssistant fall-through.
+		if search, ok := mc.(*underlying.ToolSearchCallContent); ok {
+			items = append(items, &InputItemUnion{
+				ToolSearchCallItem: &ToolSearchCallItem{
+					Type:      CallTypeToolSearchCall,
+					ID:        search.ID,
+					CallID:    search.CallID,
+					Execution: toolSearchExecutionClient,
+					Status:    toolSearchStatusCompleted,
+					Arguments: search.Arguments,
 				},
 			})
 			continue

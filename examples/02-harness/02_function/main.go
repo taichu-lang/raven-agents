@@ -11,6 +11,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/taichu-lang/raven-agents/tool/functool"
 )
 
@@ -53,7 +54,7 @@ func main() {
 		return
 	}
 
-	registry := agent.NewToolRegistry()
+	registry := tool.NewToolRegistry(nil)
 	registry.Register(getWeather, nil)
 	registry.Register(travel, nil)
 

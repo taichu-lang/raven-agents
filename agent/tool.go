@@ -2,11 +2,15 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/tool"
@@ -17,59 +21,6 @@ const (
 	ToolNameExec     string = "exec-command"
 	ToolNameQuestion string = "question"
 )
-
-type ToolActiveFunc func(state *AgentState) bool
-
-type ToolRegistration struct {
-	tool.FuncTool
-	Active ToolActiveFunc
-}
-
-type ToolRegistry struct {
-	mu    sync.RWMutex
-	tools map[string]ToolRegistration
-}
-
-func NewToolRegistry() *ToolRegistry {
-	return &ToolRegistry{
-		tools: make(map[string]ToolRegistration),
-	}
-}
-
-func (r *ToolRegistry) Register(t tool.FuncTool, active ToolActiveFunc) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.tools[t.Name()] = ToolRegistration{
-		FuncTool: t,
-		Active:   active,
-	}
-}
-
-func (r *ToolRegistry) Active(state *AgentState) []tool.FuncTool {
-	tools := make([]tool.FuncTool, 0, 1)
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for _, tool := range r.tools {
-		if tool.Active == nil || tool.Active(state) {
-			tools = append(tools, tool.FuncTool)
-		}
-	}
-
-	return tools
-}
-
-func (r *ToolRegistry) Get(name string) tool.FuncTool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if tool, ok := r.tools[name]; ok {
-		return tool.FuncTool
-	}
-
-	return nil
-}
 
 // Definition of builtin `exec_command` tool.
 
@@ -188,4 +139,133 @@ func NewQuestionTool(bus event.Bus) tool.FuncTool {
 	}
 
 	return questionTool
+}
+
+// Definition of builtin `tool_search` tool.
+
+// toolSearchInput is the {query, limit} schema of the tool search entry. The same schema serves as the
+// parameters of the native tool_search tool and, later, of the degraded function tool (design doc section 4).
+type toolSearchInput struct {
+	Query string `json:"query"          jsonschema:"Natural language description of the capability needed."`
+	Limit int    `json:"limit,omitzero" jsonschema:"Maximum number of tools to return. Defaults to 5."`
+}
+
+// NewToolSearchTool creates the builtin tool search entry, broadcast only while the registry has deferred
+// tools. On the native path the openai adapter renders this name as the {type:"tool_search",
+// execution:"client"} tool and the model answers with tool_search_call items, so the handler is only a fallback
+// for endpoints that surface it as a plain function call.
+func NewToolSearchTool(registry *tool.ToolRegistry) tool.FuncTool {
+	searchTool, err := functool.New(functool.Config{
+		Name: underlying.ToolSearchToolName,
+		// TODO(Leo): list the enabled MCP servers here (design doc 3.6 discoverability) once the MCP manager
+		// lands; the description must stay constant within a turn.
+		Description: "# Tool discovery\n\nSearches over deferred tool metadata with BM25 and exposes matching tools for the next model call.\n\nSome of the tools may not have been provided to you upfront (ex: tools provided by MCP servers), and you should use this tool (`tool_search`) to search for the required tools.",
+	}, func(ctx context.Context, input toolSearchInput) (string, error) {
+		hits, err := registry.Search(ctx, input.Query, input.Limit)
+		if err != nil {
+			return "", err
+		}
+
+		return formatToolSearchHits(hits), nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return searchTool
+}
+
+// formatToolSearchHits renders the fallback function-call result as one line per hit.
+func formatToolSearchHits(hits []tool.FuncTool) string {
+	if len(hits) == 0 {
+		return "no tools matched the query"
+	}
+
+	var sb strings.Builder
+	for _, t := range hits {
+		sb.WriteString(t.Name())
+		if description := t.Description(); description != "" {
+			sb.WriteString(": ")
+			sb.WriteString(description)
+		}
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimSuffix(sb.String(), "\n")
+}
+
+// invokeToolSearches executes the pending tool searches and checkpoints the results before any tool call runs,
+// so a turn that pauses in invokeToolCalls never leaves a tool_search_call without its output (design doc 3.6).
+// A failed search degrades to an empty result instead of failing the turn.
+func (a *Agent) invokeToolSearches(ctx context.Context) {
+	searches := a.State.ToolSearches
+	a.State.ToolSearches = nil
+
+	message := underlying.NewMessage(underlying.RoleTool, nil)
+	for _, search := range searches {
+		var input toolSearchInput
+		if err := parseSearchArgs(search.Arguments, &input); err != nil {
+			slog.Warn("failed to parse tool search arguments",
+				"call_id", search.CallID, "arguments", string(search.Arguments), "err", err)
+		}
+
+		hits, err := a.ToolRegistry.Search(ctx, input.Query, input.Limit)
+		if err != nil {
+			slog.Warn("tool search failed", "query", input.Query, "err", err)
+			hits = nil
+		}
+
+		message.Contents = append(message.Contents,
+			underlying.NewToolSearchResultContent(search.CallID, toToolDefinitions(hits)))
+		a.onEvent(ctx, event.SourceTypeAgent, event.EventToolSearch, &event.ToolSearchPayload{
+			Query: input.Query,
+			Tools: toolNames(hits),
+		})
+	}
+
+	a.checkpoint(ctx, []*underlying.Message{message})
+}
+
+// parseSearchArgs decodes the {query, limit} arguments of a tool search call. Some gateways double-encode
+// arguments as a JSON string (like function_call.arguments), so a leading quote is unescaped first.
+func parseSearchArgs(raw json.RawMessage, input *toolSearchInput) error {
+	data := []byte(raw)
+	if len(data) == 0 {
+		return errors.New("empty arguments")
+	}
+
+	if data[0] == '"' {
+		unquoted, err := strconv.Unquote(string(data))
+		if err != nil {
+			return fmt.Errorf("unquote tool search arguments: %w", err)
+		}
+
+		data = []byte(unquoted)
+	}
+
+	return json.Unmarshal(data, input)
+}
+
+// toToolDefinitions maps the registry's FuncTools to message-layer definitions: the search interface does not
+// depend on message types, the agent does the conversion (design doc section 4).
+func toToolDefinitions(hits []tool.FuncTool) []*underlying.ToolDefinition {
+	defs := make([]*underlying.ToolDefinition, 0, len(hits))
+	for _, t := range hits {
+		defs = append(defs, &underlying.ToolDefinition{
+			Name:        t.Name(),
+			Description: t.Description(),
+			InputSchema: t.InSchema(),
+		})
+	}
+
+	return defs
+}
+
+func toolNames(hits []tool.FuncTool) []string {
+	names := make([]string, 0, len(hits))
+	for _, t := range hits {
+		names = append(names, t.Name())
+	}
+
+	return names
 }

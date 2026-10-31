@@ -3,6 +3,8 @@ package underlying
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 type ContentKind string
@@ -26,6 +28,14 @@ const (
 	// ContentKindSkill discloses a skill to the model. How it reaches the model is left to each
 	// provider, as the shape of the request differs between model apis.
 	ContentKindSkill ContentKind = "skill"
+
+	// ContentKindToolSearchCall carries a tool search issued by the model. How it reaches the
+	// model is left to each provider (ex: OpenAI renders it as a tool_search_call item).
+	ContentKindToolSearchCall ContentKind = "tool_search_call"
+
+	// ContentKindToolSearchResult carries the tools a search resolved to. How it reaches the
+	// model is left to each provider (ex: OpenAI renders it as a tool_search_output item).
+	ContentKindToolSearchResult ContentKind = "tool_search_result"
 )
 
 type MediaType string
@@ -106,13 +116,15 @@ func (u *UsageContent) MarshalJSON() ([]byte, error) {
 type ToolCallContent struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitzero"`
 	Arguments string `json:"arguments"`
 }
 
-func NewToolCallContent(id, name, arguments string) *ToolCallContent {
+func NewToolCallContent(id, name, namespace, arguments string) *ToolCallContent {
 	return &ToolCallContent{
 		ID:        id,
 		Name:      name,
+		Namespace: namespace,
 		Arguments: arguments,
 	}
 }
@@ -257,6 +269,79 @@ func NewUnresolvedSkillContent(name string) *SkillContent {
 	}
 }
 
+// ToolDefinition is the serializable definition of a tool carried by a tool search result, so
+// the model sees the full shape (name, description, input schema) of a discovered tool.
+type ToolDefinition struct {
+	Name string `json:"name"`
+	// Namespace is required for OpenAI.
+	Namespace   string             `json:"namespace,omitzero"`
+	Description string             `json:"description,omitzero"`
+	InputSchema *jsonschema.Schema `json:"input_schema,omitzero"`
+}
+
+// ToolSearchCallContent is a search the model issued, living in an assistant message. Arguments
+// is kept raw: the agent parses query/limit against the schema it advertised, so a schema change
+// never touches the message layer or the persisted format.
+type ToolSearchCallContent struct {
+	ID        string          `json:"id,omitzero"`
+	CallID    string          `json:"call_id"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+func NewToolSearchCallContent(id, callID string, arguments json.RawMessage) *ToolSearchCallContent {
+	return &ToolSearchCallContent{
+		ID:        id,
+		CallID:    callID,
+		Arguments: arguments,
+	}
+}
+
+func (t ToolSearchCallContent) Kind() ContentKind {
+	return ContentKindToolSearchCall
+}
+
+func (t *ToolSearchCallContent) MarshalJSON() ([]byte, error) {
+	type alias ToolSearchCallContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(t),
+		Type:  t.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
+// ToolSearchResultContent is the result of a tool search, living in a RoleTool message next to
+// ToolResultContent. It carries the full definitions of the tools the search resolved to.
+type ToolSearchResultContent struct {
+	CallID string            `json:"call_id"`
+	Tools  []*ToolDefinition `json:"tools"`
+}
+
+func NewToolSearchResultContent(callID string, tools []*ToolDefinition) *ToolSearchResultContent {
+	return &ToolSearchResultContent{
+		CallID: callID,
+		Tools:  tools,
+	}
+}
+
+func (t ToolSearchResultContent) Kind() ContentKind {
+	return ContentKindToolSearchResult
+}
+
+func (t *ToolSearchResultContent) MarshalJSON() ([]byte, error) {
+	type alias ToolSearchResultContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(t),
+		Type:  t.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
 // UnmarshalMessageContents decodes the JSON produced by marshalling a MessageContents. It is the
 // inverse of the per type MarshalJSON methods: every content carries the type discriminator they
 // write next to their own fields.
@@ -307,6 +392,10 @@ func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
 		content = new(ReasoningContent)
 	case ContentKindSkill:
 		content = new(SkillContent)
+	case ContentKindToolSearchCall:
+		content = new(ToolSearchCallContent)
+	case ContentKindToolSearchResult:
+		content = new(ToolSearchResultContent)
 	default:
 		return nil, fmt.Errorf("unmarshal message content: unknown type %q", discriminator.Type)
 	}

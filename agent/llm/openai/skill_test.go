@@ -31,7 +31,7 @@ func TestSelectedSkillTravelsAsFunctionCallAndOutput(t *testing.T) {
 		{
 			Role: underlying.RoleAssistant,
 			Contents: underlying.MessageContents{
-				underlying.NewToolCallContent("toolu_abc123", "Skill", `{"name":"pdf-processing"}`),
+				underlying.NewToolCallContent("toolu_abc123", "Skill", "skill", `{"name":"pdf-processing"}`),
 			},
 		},
 		{

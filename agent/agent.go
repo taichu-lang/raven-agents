@@ -17,6 +17,7 @@ import (
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
+	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/uptrace/bun"
 )
 
@@ -50,7 +51,7 @@ type Agent struct {
 	Budget        Budget
 	EventBus      event.Bus
 	SkillRegistry *SkillRegistry
-	ToolRegistry  *ToolRegistry
+	ToolRegistry  *tool.ToolRegistry
 	Hooks         *hook.Registry
 	Store         Repository
 	Sandbox       sandbox.Sandbox
@@ -62,7 +63,7 @@ type Agent struct {
 	tracer       *TraceSubscriber
 }
 
-func New(eventBus event.Bus, tr *ToolRegistry, options *AgentOptions) *Agent {
+func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agent {
 	if err := options.validate(); err != nil {
 		panic(err)
 	}
@@ -138,14 +139,20 @@ func (a *Agent) addBuiltinTools() {
 
 	// The active set is computed once per turn, so the tool stays available for the whole turn as long as any
 	// active skill is installed.
-	a.ToolRegistry.Register(loadSkillTool, func(state *AgentState) bool {
-		return len(a.SkillRegistry.Available(state)) > 0
+	a.ToolRegistry.Register(loadSkillTool, func() bool {
+		return len(a.SkillRegistry.Available(a.State)) > 0
 	})
 	if a.Sandbox != nil {
 		a.ToolRegistry.Register(NewExecTool(a.Sandbox), nil)
 	}
 
 	a.ToolRegistry.Register(NewQuestionTool(a.EventBus), nil)
+
+	// The tool search entry is broadcast only while deferred tools exist; the active set is
+	// computed once per turn, and deferred tools are registered before the turn starts.
+	a.ToolRegistry.Register(NewToolSearchTool(a.ToolRegistry), func() bool {
+		return a.ToolRegistry.HasDeferred()
+	})
 }
 
 // Shutdown unsubscribes from the event bus and waits for the tracer goroutine to consume the events
@@ -257,7 +264,7 @@ func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultConte
 // loop iterates until the turn is done, paused for the user, or failed.
 func (a *Agent) loop(ctx context.Context) error {
 	// The system and tools prompt should keep immutable during the turn.
-	a.State.Tools = a.ToolRegistry.Active(a.State)
+	a.State.Tools = a.ToolRegistry.Active()
 	opts := make([]underlying.WithGenOption, 0, len(a.State.Tools))
 	for _, t := range a.State.Tools {
 		opts = append(opts, underlying.WithTool(t))
@@ -281,7 +288,7 @@ func (a *Agent) loop(ctx context.Context) error {
 			return nil
 		}
 
-		if len(a.State.ToolCalls) == 0 {
+		if len(a.State.ToolCalls) == 0 && len(a.State.ToolSearches) == 0 {
 			a.State.Status = persistent.TurnStatusDone
 			return nil
 		}
@@ -293,6 +300,13 @@ func (a *Agent) iterate(
 	opts []underlying.WithGenOption,
 ) error {
 	a.onEvent(ctx, event.SourceTypeAgent, event.EventIterationStart, a.State.Iterations)
+	// Searches are returned from the previous iteration; they run before the tool calls (and
+	// before beforeToolCall) and checkpoint right away, so a turn that pauses on an approval
+	// never leaves a tool_search_call without its output.
+	if len(a.State.ToolSearches) > 0 {
+		a.invokeToolSearches(ctx)
+	}
+
 	// tools are returned from the previous iteration, and should be invoked first.
 	if len(a.State.ToolCalls) > 0 {
 		a.invokeToolCalls(ctx)
