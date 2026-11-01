@@ -8,8 +8,8 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/event"
-	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/observability"
 	"github.com/taichu-lang/raven-agents/tool"
 )
 

@@ -5,10 +5,10 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/handler"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
-	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/pkg/observability"
 )
 
 func main() {

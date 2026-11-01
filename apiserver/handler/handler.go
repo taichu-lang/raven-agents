@@ -3,9 +3,9 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/taichu-lang/raven-agents/apiserver/application"
+	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/handler/middlewares"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 )
 
 func AddRouters(
@@ -28,8 +28,4 @@ func AddRouters(
 	skillService := application.NewSkillService(store.Skill)
 	skillHandler := NewSkillHandler(skillService)
 	skillHandler.AddRouters(group)
-
-	userService := application.NewUserService(store.User)
-	userHandler := NewUserHandler(userService)
-	userHandler.AddRouters(group)
 }

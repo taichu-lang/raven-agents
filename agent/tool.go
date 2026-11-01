@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/pkg/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/taichu-lang/raven-agents/tool/functool"

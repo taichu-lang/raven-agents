@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/goccy/go-yaml"
-	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 )
 
 type Prompt struct {

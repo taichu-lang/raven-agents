@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
+	"github.com/taichu-lang/raven-agents/apiserver/configs"
 )
 
 type ModelHandler struct {

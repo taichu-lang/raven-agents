@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/event"
-	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

@@ -10,7 +10,7 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/pkg/event"
 )
 
 // beforeUserInput invokes hooks before user input, returns the messages that join the conversation.

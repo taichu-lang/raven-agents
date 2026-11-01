@@ -5,15 +5,14 @@ import (
 
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/skill"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/user"
-	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/uptrace/bun"
 )
 
 type Store struct {
-	db *bun.DB
+	db     *bun.DB
+	logger *slog.Logger
 
-	User         *user.UserStore
 	Conversation *conversation.ConversationStore
 	Skill        *skill.SkillStore
 }
@@ -43,10 +42,20 @@ func NewStore(cfg *database.StoreConfig) *Store {
 
 	return &Store{
 		db:           db,
-		User:         user.NewUserStore(db, logger),
+		logger:       logger,
 		Conversation: conversation.NewConversationStore(db, logger),
 		Skill:        skill.NewSkillStore(db, logger),
 	}
+}
+
+// DB exposes the underlying bun database, so that downstream modules can run their own
+// queries and schema migrations on the same connection.
+func (s *Store) DB() *bun.DB {
+	return s.db
+}
+
+func (s *Store) Logger() *slog.Logger {
+	return s.logger
 }
 
 func (s *Store) Close() error {

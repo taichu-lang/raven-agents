@@ -8,7 +8,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/pkg/observability"
 )
 
 func main() {

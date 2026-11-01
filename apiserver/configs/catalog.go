@@ -17,7 +17,7 @@ type Cost struct {
 
 type ModelCatalog struct {
 	underlying.Catalog
-	Cost
+	Cost `json:"cost" yaml:"cost"`
 }
 
 type ModelCatalogSlice = []ModelCatalog

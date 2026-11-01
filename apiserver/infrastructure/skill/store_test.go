@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 )
 
 // newTestStore opens a migrated in-memory sqlite database and returns a skill store on top of it.

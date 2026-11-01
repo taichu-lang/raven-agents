@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/uptrace/bun"
 )
 

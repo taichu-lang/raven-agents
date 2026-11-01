@@ -10,7 +10,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/apiserver/application"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
-	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/pkg/event"
 )
 
 type ChatHandler struct {

@@ -9,11 +9,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
-	"github.com/taichu-lang/raven-agents/internal/database"
-	"github.com/taichu-lang/raven-agents/internal/event"
+	"github.com/taichu-lang/raven-agents/pkg/database"
+	"github.com/taichu-lang/raven-agents/pkg/event"
 )
 
 type TitleGeneration struct {

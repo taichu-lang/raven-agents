@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/database"
-	"github.com/taichu-lang/raven-agents/internal/event"
-	"github.com/taichu-lang/raven-agents/internal/observability"
+	"github.com/taichu-lang/raven-agents/pkg/database"
+	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/observability"
 	"github.com/taichu-lang/raven-agents/tool"
 )
 

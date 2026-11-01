@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/internal/database"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/uptrace/bun"
 )
 
