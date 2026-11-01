@@ -16,7 +16,9 @@ func main() {
 	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:   os.Getenv("OPENAI_APIKEY"),
 		Endpoint: os.Getenv("OPENAI_API"),
-		Model:    "gpt-6-astra",
+		Catalog: &underlying.Catalog{
+			ID: "gpt-6-astra",
+		},
 	})
 
 	image := "<your_image_file>"

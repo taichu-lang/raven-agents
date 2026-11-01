@@ -72,7 +72,7 @@ func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agen
 		State: &AgentState{
 			Status:         persistent.TurnStatusIdle,
 			StartedAt:      time.Now(),
-			Model:          options.LLM.Model,
+			Model:          options.LLM.Catalog.ID,
 			UserID:         options.UserID,
 			ConversationID: options.ConversationID,
 		},

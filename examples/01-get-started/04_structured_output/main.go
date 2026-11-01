@@ -22,8 +22,10 @@ func main() {
 	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
 		Endpoint:     os.Getenv("OPENAI_API"),
-		Model:        "gpt-6-astra",
 		Instructions: "Extract entities from the input text",
+		Catalog: &underlying.Catalog{
+			ID: "gpt-6-astra",
+		},
 	})
 
 	for chunk, err := range model.Run(

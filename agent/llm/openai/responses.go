@@ -35,8 +35,9 @@ func (p *Provider) Gen(
 	options *underlying.GenOptions,
 ) underlying.ResponseStream {
 	return func(yield func(*underlying.ResponseChunk, error) bool) {
+		model := p.options.Catalog.ID
 		opts := underlying.WithDefaultOptions(options)
-		params := p.newResponsesParams(p.options.Model, messages, opts)
+		params := p.newResponsesParams(model, messages, opts)
 		body, err := json.Marshal(params)
 		if err != nil {
 			p.logger.Error("invalid generation request", "err", err)
@@ -47,7 +48,7 @@ func (p *Provider) Gen(
 		p.logger.Debug(
 			"request body of generation",
 			"model",
-			p.options.Model,
+			model,
 			"options",
 			opts,
 			"body",

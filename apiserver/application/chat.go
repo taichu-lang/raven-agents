@@ -31,15 +31,22 @@ type ChatService struct {
 	skillsDir       string
 	sandboxProvider sandbox.Provider
 	promptTemplate  *template.Template
+	models          map[string]configs.ModelCatalog
 }
 
 func NewChatService(
 	cfg *configs.Config,
+	catalogs configs.ModelCatalogSlice,
 	store *conversation.ConversationStore,
 ) *ChatService {
 	temp, err := template.New(TemplateTitlePrompt).Parse(cfg.Prompt.TitleGen)
 	if err != nil {
 		panic(err)
+	}
+
+	models := make(map[string]configs.ModelCatalog)
+	for _, catalog := range catalogs {
+		models[catalog.ID] = catalog
 	}
 
 	return &ChatService{
@@ -49,6 +56,7 @@ func NewChatService(
 		skillsDir:       path.Join(cfg.AppDir, ".agents", "skills"),
 		sandboxProvider: local.NewProvider(),
 		promptTemplate:  temp,
+		models:          models,
 	}
 }
 
@@ -64,6 +72,11 @@ func (s *ChatService) Chat(
 ) (<-chan *event.Event, error) {
 	if req.Model == "" {
 		req.Model = s.cfg.DefaultModel
+	}
+
+	catalog, ok := s.models[req.Model]
+	if !ok {
+		return nil, fmt.Errorf("model %s not found", req.Model)
 	}
 
 	c, err := s.store.Get(ctx, req.ConversationID)
@@ -84,7 +97,7 @@ func (s *ChatService) Chat(
 	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
 
-	titleGen := s.genConversationTitle(ctx, req, c, bus)
+	titleGen := s.genConversationTitle(ctx, c, req.Text, &catalog, bus)
 	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         "1",
@@ -94,7 +107,7 @@ func (s *ChatService) Chat(
 			ApiKey:       s.cfg.ApiKey,
 			Endpoint:     s.cfg.Endpoint,
 			Instructions: s.cfg.Instructions,
-			Model:        req.Model,
+			Catalog:      &catalog.Catalog,
 		},
 		SkillDirs:       []string{s.skillsDir},
 		SandboxProvider: s.sandboxProvider,

@@ -40,11 +40,13 @@ func TestToolSearchRenderedAsNativeTool(t *testing.T) {
 	p := &Provider{
 		options: &underlying.ProviderOptions{
 			Endpoint: "https://example.invalid",
-			Model:    "gpt-4.1-nano",
+			Catalog: &underlying.Catalog{
+				ID: "gpt-4.1",
+			},
 		},
 	}
 
-	params := p.newResponsesParams("gpt-4.1-nano", []*underlying.Message{
+	params := p.newResponsesParams("gpt-4.1", []*underlying.Message{
 		underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
 			underlying.NewTextContent("find a pdf tool"),
 		}),
@@ -105,7 +107,9 @@ func TestToolSearchCallAndOutputTravelAsTopLevelItems(t *testing.T) {
 	p := &Provider{
 		options: &underlying.ProviderOptions{
 			Endpoint: "https://example.invalid",
-			Model:    "gpt-4.1-nano",
+			Catalog: &underlying.Catalog{
+				ID: "gpt-4.1",
+			},
 		},
 	}
 
@@ -114,7 +118,7 @@ func TestToolSearchCallAndOutputTravelAsTopLevelItems(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	params := p.newResponsesParams("gpt-4.1-nano", []*underlying.Message{
+	params := p.newResponsesParams("gpt-4.1", []*underlying.Message{
 		underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
 			underlying.NewTextContent("find a pdf tool"),
 		}),

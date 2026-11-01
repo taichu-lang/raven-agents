@@ -17,7 +17,9 @@ func main() {
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
 		Endpoint:     os.Getenv("OPENAI_API"),
 		Instructions: "You are a helpful assistant!",
-		Model:        "gpt-4.1-nano",
+		Catalog: &underlying.Catalog{
+			ID: "gpt-4.1",
+		},
 	})
 
 	messages := make([]*underlying.Message, 0, 1)

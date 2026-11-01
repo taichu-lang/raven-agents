@@ -8,12 +8,20 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 )
 
-func AddRouters(router *gin.Engine, cfg *configs.Config, store *infrastructure.Store) {
+func AddRouters(
+	router *gin.Engine,
+	cfg *configs.Config,
+	catalogs configs.ModelCatalogSlice,
+	store *infrastructure.Store,
+) {
 	// Registered on the engine so that preflight OPTIONS requests, which match no route, still pass through it.
 	router.Use(middlewares.CORS())
 	group := router.Group("/api/v1")
 
-	chatService := application.NewChatService(cfg, store.Conversation)
+	modelHandler := NewModelHandler(catalogs)
+	modelHandler.AddRouters(group)
+
+	chatService := application.NewChatService(cfg, catalogs, store.Conversation)
 	chatHandler := NewChatHandler(chatService)
 	chatHandler.AddRouters(group)
 

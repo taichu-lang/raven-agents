@@ -15,12 +15,16 @@ func TestSelectedSkillTravelsAsFunctionCallAndOutput(t *testing.T) {
 	p := &Provider{
 		options: &underlying.ProviderOptions{
 			Endpoint:     "https://example.invalid",
-			Model:        "gpt-4.1-nano",
 			Instructions: "You are a helpful assistant.",
+			Catalog: &underlying.Catalog{
+				ID:     "gpt-4.1",
+				Family: "gpt",
+				Name:   "GPT 4.1",
+			},
 		},
 	}
 
-	params := p.newResponsesParams("gpt-4.1-nano", []*underlying.Message{
+	params := p.newResponsesParams("gpt-4.1", []*underlying.Message{
 		{
 			Role: underlying.RoleUser,
 			Contents: underlying.MessageContents{

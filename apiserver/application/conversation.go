@@ -10,6 +10,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/internal/database"
 	"github.com/taichu-lang/raven-agents/internal/event"
@@ -74,8 +75,9 @@ func (s *ChatService) GetConversation(
 
 func (s *ChatService) genConversationTitle(
 	ctx context.Context,
-	req *domain.ChatRequest,
 	c *conversation.ConversationModel,
+	text string,
+	catalog *configs.ModelCatalog,
 	bus event.Bus,
 ) *TitleGeneration {
 	gen := &TitleGeneration{}
@@ -84,12 +86,12 @@ func (s *ChatService) genConversationTitle(
 		runner := llm.NewRunner(&underlying.ProviderOptions{
 			ApiKey:   s.cfg.ApiKey,
 			Endpoint: s.cfg.Endpoint,
-			Model:    req.Model,
+			Catalog:  &catalog.Catalog,
 		})
 
 		var prompt bytes.Buffer
 		if err := s.promptTemplate.Execute(&prompt, map[string]interface{}{
-			"UserInput": req.Text,
+			"UserInput": text,
 		}); err != nil {
 			s.logger.Warn("failed to build prompt for title generation", "err", err)
 			gen.done.Done()

@@ -138,7 +138,9 @@ func main() {
 			Endpoint: os.Getenv("OPENAI_API"),
 			Instructions: "You are a helpful assistant. Tools you need may not be in your tool " +
 				"list: discover them with a tool search first, then call them by name.",
-			Model: model,
+			Catalog: &underlying.Catalog{
+				ID: model,
+			},
 		},
 	})
 

@@ -239,6 +239,8 @@ func (d *DataContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
+// TODO(Leo): Move to agent, as llm does not render SkillContent.
+//
 // SkillContent marks one skill the caller selected for the turn that carries it. It is a selection
 // marker only: before the turn starts, the agent resolves it into a Skill tool call and its tool
 // result (see beforeUserInput), so no provider adapter ever renders this content.
@@ -267,16 +269,6 @@ func NewUnresolvedSkillContent(name string) *SkillContent {
 	return &SkillContent{
 		Name: name,
 	}
-}
-
-// ToolDefinition is the serializable definition of a tool carried by a tool search result, so
-// the model sees the full shape (name, description, input schema) of a discovered tool.
-type ToolDefinition struct {
-	Name string `json:"name"`
-	// Namespace is required for OpenAI.
-	Namespace   string             `json:"namespace,omitzero"`
-	Description string             `json:"description,omitzero"`
-	InputSchema *jsonschema.Schema `json:"input_schema,omitzero"`
 }
 
 // ToolSearchCallContent is a search the model issued, living in an assistant message. Arguments
@@ -310,6 +302,16 @@ func (t *ToolSearchCallContent) MarshalJSON() ([]byte, error) {
 		Type:  t.Kind(),
 	}
 	return json.Marshal(tmp)
+}
+
+// ToolDefinition is the serializable definition of a tool carried by a tool search result, so
+// the model sees the full shape (name, description, input schema) of a discovered tool.
+type ToolDefinition struct {
+	Name string `json:"name"`
+	// Namespace is required for OpenAI.
+	Namespace   string             `json:"namespace,omitzero"`
+	Description string             `json:"description,omitzero"`
+	InputSchema *jsonschema.Schema `json:"input_schema,omitzero"`
 }
 
 // ToolSearchResultContent is the result of a tool search, living in a RoleTool message next to

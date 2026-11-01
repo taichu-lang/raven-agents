@@ -16,31 +16,30 @@ type ResponseStream = iter.Seq2[*ResponseChunk, error]
 type Protocol string
 
 const (
-	// ProtocolOpenAI represents OpenAI responses api, endpoint is '/v1/responses'.
-	ProtocolOpenAI Protocol = "openai"
+	// ProtocolCompletion represents OpenAI completion api, endpoint is '/v1/chat/completions'.
+	ProtocolCompletion Protocol = "completion"
+
+	// ProtocolResponses represents OpenAI responses api, endpoint is '/v1/responses'.
+	ProtocolResponses Protocol = "responses"
 
 	// ProtocolClaude represents Claude message api, endpoint is '/v1/messages'.
 	ProtocolClaude Protocol = "claude"
 )
 
-// ToolSearchToolName is the broadcast name of the tool search entry (name as protocol): an
-// adapter that supports the native form (ex: OpenAI tool_search with client execution) renders
-// the tool carrying this name as the native item instead of a plain function tool.
+// ToolSearchToolName is the broadcast name of the tool search entry (name as protocol): an adapter that
+// supports the native form (ex: OpenAI tool_search with client execution) renders the tool carrying this name
+// as the native item instead of a plain function tool.
 const ToolSearchToolName = "tool_search"
 
-// ProviderOptions is the constructor options of an instance of llm provider.
-// Different models in the same family may have different instructions, context
-// windows size, and conversation history (ex: reasoning) may not be directly
-// transferable to another model. So by design, each provider instance owns
-// the `model` and `instructions`.
+// ProviderOptions is the constructor options of an instance of llm provider. Different models in the same
+// family may have different instructions, context windows size, and conversation history (ex: reasoning) may
+// not be directly transferable to another model. So by design, each provider instance owns the `model` and
+// `instructions`.
 type ProviderOptions struct {
-	ApiKey       string `yaml:"api_key"               json:"api_key"`
-	Endpoint     string `yaml:"endpoint"              json:"endpoint"`
-	Model        string `yaml:"model"                 json:"model"`
-	Instructions string `yaml:"instructions,omitzero" json:"instructions,omitzero"`
-
-	// Default is ProtocolOpenAI.
-	Protocol Protocol `yaml:"protocol,omitzero" json:"protocol,omitzero"`
+	ApiKey       string   `yaml:"api_key"               json:"api_key"`
+	Endpoint     string   `yaml:"endpoint"              json:"endpoint"`
+	Instructions string   `yaml:"instructions,omitzero" json:"instructions,omitzero"`
+	Catalog      *Catalog `yaml:"catalog"               json:"catalog"`
 }
 
 func (p *ProviderOptions) Validate() error {
@@ -48,8 +47,8 @@ func (p *ProviderOptions) Validate() error {
 		return errors.New("endpoint is required")
 	}
 
-	if p.Model == "" {
-		return errors.New("model is required")
+	if p.Catalog == nil {
+		return errors.New("catalog is required")
 	}
 
 	return nil
@@ -63,8 +62,7 @@ type OutputFormatOption struct {
 type GenOptions struct {
 	Stream bool
 
-	// OutputFormat is the schema of response what we want to get from llm, i.e.,
-	// structured model outputs.
+	// OutputFormat is the schema of response what we want to get from llm, i.e., structured model outputs.
 	OutputFormat *OutputFormatOption
 
 	Tools []tool.Tool

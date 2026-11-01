@@ -3,6 +3,7 @@
     "apiserver",
     "frontmatter",
     "functool",
+    "gonic",
     "jsonschema",
     "omitzero",
     "ssestream",

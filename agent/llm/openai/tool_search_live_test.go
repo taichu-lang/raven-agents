@@ -33,7 +33,9 @@ func liveOptions(t *testing.T) *underlying.ProviderOptions {
 		model = "qwen3.8-max"
 	}
 
-	return &underlying.ProviderOptions{ApiKey: apiKey, Endpoint: endpoint, Model: model}
+	return &underlying.ProviderOptions{ApiKey: apiKey, Endpoint: endpoint, Catalog: &underlying.Catalog{
+		ID: model,
+	}}
 }
 
 func newLiveProvider(options *underlying.ProviderOptions) *Provider {
@@ -157,7 +159,7 @@ func TestToolSearchProbeDeferredBroadcast(t *testing.T) {
 	options := liveOptions(t)
 	p := newLiveProvider(options)
 
-	params := p.newResponsesParams(options.Model, searchProbeMessages(), &underlying.GenOptions{
+	params := p.newResponsesParams(options.Catalog.ID, searchProbeMessages(), &underlying.GenOptions{
 		Stream: true,
 		Tools: []tool.Tool{
 			newTestFuncTool[pdfConvertInput](t, "pdf_convert", "Converts PDF files to markdown."),

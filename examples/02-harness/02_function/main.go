@@ -86,7 +86,9 @@ func main() {
 
 Important: Only call the tool needed at each step, and wait for the result before deciding on the next action.
 		`,
-			Model: "gpt-4.1-nano",
+			Catalog: &underlying.Catalog{
+				ID: "gpt-4.1",
+			},
 		},
 	})
 	a.Run(ctx, []*underlying.Message{

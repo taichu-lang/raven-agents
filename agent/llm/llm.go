@@ -81,15 +81,6 @@ func newProvider(options *underlying.ProviderOptions) underlying.Provider {
 		panic(err)
 	}
 
-	if options.Protocol == "" {
-		options.Protocol = underlying.ProtocolOpenAI
-	}
-
-	switch options.Protocol {
-	case underlying.ProtocolOpenAI:
-		return openai.NewProvider(options)
-
-	default:
-		return nil
-	}
+	// TODO(Leo): create provider based on protocol.
+	return openai.NewProvider(options)
 }

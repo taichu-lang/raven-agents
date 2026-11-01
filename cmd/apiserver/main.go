@@ -19,6 +19,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	catalogs, err := configs.LoadModelCatalog()
+	if err != nil {
+		logger.Error("failed to resolve model catalog", "err", err)
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 
 	store := infrastructure.NewStore(cfg.Store)
@@ -33,7 +39,7 @@ func main() {
 	defer tp.Shutdown(ctx)
 
 	engine := gin.Default()
-	handler.AddRouters(engine, cfg, store)
+	handler.AddRouters(engine, cfg, catalogs, store)
 	if err := engine.Run("0.0.0.0:8001"); err != nil {
 		logger.Error("failed to start server", "err", err)
 		os.Exit(1)
