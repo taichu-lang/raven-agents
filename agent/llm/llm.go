@@ -19,13 +19,19 @@ type Runner struct {
 	entrypoint RunFunc
 }
 
-func NewRunner(options *underlying.ProviderOptions) *Runner {
+// NewRunner builds a Runner with the default middleware chain followed by the given extra middlewares. An extra
+// middleware therefore runs closest to the provider and observes the raw response stream, which makes it the
+// injection point for per-call concerns like metering.
+func NewRunner(options *underlying.ProviderOptions, extra ...Middleware) *Runner {
 	a := &Runner{
 		logger:     slog.Default().With("runner", "llm"),
 		underlying: newProvider(options),
 	}
 
-	middlewares := []Middleware{NewStructuredOutputMiddleware(), NewLoggerMiddleware(a.logger)}
+	middlewares := append(
+		[]Middleware{NewStructuredOutputMiddleware(), NewLoggerMiddleware(a.logger)},
+		extra...,
+	)
 
 	// -> structured_output::run
 	//   -> logger::run

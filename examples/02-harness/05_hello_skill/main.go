@@ -69,7 +69,9 @@ func main() {
 				ID: "gpt-4.1",
 			},
 		},
-		SkillDirs: []string{path.Join(home, ".agents", "skills")},
+		SkillDirs:      []string{path.Join(home, ".agents", "skills")},
+		UserID:         "1",
+		ConversationID: "1",
 	})
 	a.Run(ctx, []*underlying.Message{
 		{

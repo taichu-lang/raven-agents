@@ -90,6 +90,8 @@ Important: Only call the tool needed at each step, and wait for the result befor
 				ID: "gpt-4.1",
 			},
 		},
+		UserID:         "1",
+		ConversationID: "1",
 	})
 	a.Run(ctx, []*underlying.Message{
 		{

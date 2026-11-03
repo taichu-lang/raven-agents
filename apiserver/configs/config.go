@@ -25,27 +25,36 @@ type Config struct {
 	Prompt Prompt `yaml:"prompt"`
 }
 
-func (c *Config) Load() error {
+func LoadConfig() (*Config, error) {
+	c := &Config{}
 	data, err := os.ReadFile("configs/config.yml")
 	if err != nil {
-		return fmt.Errorf("config file not found, %w", err)
+		return nil, fmt.Errorf("config file not found, %w", err)
 	}
 
 	expanded := os.ExpandEnv(string(data))
 	if err := yaml.Unmarshal([]byte(expanded), c); err != nil {
-		return fmt.Errorf("invalid yaml, %w", err)
+		return nil, fmt.Errorf("invalid yaml, %w", err)
 	}
 
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+
+	if c.AppDir == "" {
+		c.AppDir, _ = os.UserHomeDir()
+	}
+
+	return c, nil
+}
+
+func (c *Config) Validate() error {
 	if c.Store == nil {
 		return errors.New("store is required")
 	}
 
 	if err := c.Store.Validate(); err != nil {
 		return fmt.Errorf("invalid store config, %w", err)
-	}
-
-	if c.AppDir == "" {
-		c.AppDir, _ = os.UserHomeDir()
 	}
 
 	if c.Prompt.TitleGen == "" {

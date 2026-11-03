@@ -10,6 +10,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent"
 	"github.com/taichu-lang/raven-agents/apiserver/application"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
+	"github.com/taichu-lang/raven-agents/apiserver/handler/middlewares"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 )
 
@@ -42,9 +43,10 @@ func (h *ChatHandler) chat(c *gin.Context) {
 
 	request.ConversationID = id
 	h.logger.Debug("accept chat message", "conversation_id", id, "message", request)
-	ctx := c.Request.Context()
 
-	events, err := h.service.Chat(ctx, &request)
+	userID, _ := middlewares.UserIDFromContext(c)
+	ctx := c.Request.Context()
+	events, err := h.service.Chat(ctx, &request, userID)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, agent.ErrSkillNotFound) {
@@ -69,6 +71,7 @@ func (h *ChatHandler) chat(c *gin.Context) {
 				return false
 			}
 
+			// TODO(Leo): handle error event.
 			switch e.Name {
 			case application.EventConversationStart:
 				fallthrough

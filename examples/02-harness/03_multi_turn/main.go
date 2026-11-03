@@ -53,6 +53,8 @@ func main() {
 				ID: "gpt-4.1",
 			},
 		},
+		UserID:         "1",
+		ConversationID: "1",
 	})
 	if err := a.Run(ctx, []*underlying.Message{
 		{

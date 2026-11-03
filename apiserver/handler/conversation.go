@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
+	"github.com/taichu-lang/raven-agents/apiserver/handler/middlewares"
 )
 
 func (h *ChatHandler) getConversations(c *gin.Context) {
@@ -14,8 +15,8 @@ func (h *ChatHandler) getConversations(c *gin.Context) {
 		return
 	}
 
-	// Authentication is not wired yet, the chat flow also owns its conversations as user 1.
-	items, err := h.service.GetConversations(c.Request.Context(), 1, request.From, request.Limit)
+	userID, _ := middlewares.UserIDFromContext(c)
+	items, err := h.service.GetConversations(c.Request.Context(), userID, request.From, request.Limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.ApiCodeSystem.WithError(err))
 		return

@@ -44,6 +44,8 @@ func main() {
 				ID: "gpt-4.1",
 			},
 		},
+		UserID:         "1",
+		ConversationID: "1",
 	})
 	a.Run(ctx, []*underlying.Message{
 		{

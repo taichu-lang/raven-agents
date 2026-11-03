@@ -43,6 +43,10 @@ type AgentOptions struct {
 
 	// WorkDir is the working directory of the sandbox; empty means the backend default.
 	WorkDir string
+
+	// Middlewares are appended to the default LLM middleware chain, so they wrap every LLM call of the agent,
+	// one per iteration. They run closest to the provider.
+	Middlewares []llm.Middleware
 }
 
 type Agent struct {
@@ -97,7 +101,7 @@ func (a *Agent) init(options *AgentOptions) {
 		panic(fmt.Errorf("failed to restore messages, %v", err))
 	}
 
-	a.LLM = llm.NewRunner(options.LLM)
+	a.LLM = llm.NewRunner(options.LLM, options.Middlewares...)
 	a.Budget.MaxIterations = DefaultMaxIterations
 	a.SkillRegistry = NewSkillRegistry(options.SkillDirs)
 

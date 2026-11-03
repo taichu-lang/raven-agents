@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"strconv"
 	"text/template"
 
 	"github.com/google/uuid"
@@ -69,6 +70,7 @@ func NewChatService(
 func (s *ChatService) Chat(
 	ctx context.Context,
 	req *domain.ChatRequest,
+	userID int64,
 ) (<-chan *event.Event, error) {
 	if req.Model == "" {
 		req.Model = s.cfg.DefaultModel
@@ -87,7 +89,7 @@ func (s *ChatService) Chat(
 	if c == nil {
 		c = &conversation.ConversationModel{
 			ConversationID: req.ConversationID,
-			UserID:         1,
+			UserID:         userID,
 		}
 		if err := s.store.Create(ctx, c); err != nil {
 			return nil, fmt.Errorf("database error: %w", err)
@@ -98,9 +100,9 @@ func (s *ChatService) Chat(
 	subscription := bus.Subscribe()
 
 	titleGen := s.genConversationTitle(ctx, c, req.Text, &catalog, bus)
-	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
+	options := &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
-		UserID:         "1",
+		UserID:         strconv.FormatInt(userID, 10),
 		ConversationID: req.ConversationID,
 		Store:          s.store.GetUnderlying(),
 		LLM: &underlying.ProviderOptions{
@@ -111,7 +113,20 @@ func (s *ChatService) Chat(
 		},
 		SkillDirs:       []string{s.skillsDir},
 		SandboxProvider: s.sandboxProvider,
-	})
+	}
+
+	// Plugins installed on the request context contribute their LLM middlewares; the chat service stays unaware
+	// of what they are.
+	mc := &agent.MiddlewareContext{
+		UserID:         userID,
+		ConversationID: req.ConversationID,
+		Model:          catalog.ID,
+	}
+	for _, source := range agent.MiddlewareSourcesFromContext(ctx) {
+		options.Middlewares = append(options.Middlewares, source.WithMiddlewares(ctx, mc)...)
+	}
+
+	a := agent.New(bus, tool.NewToolRegistry(nil), options)
 
 	skills := s.resolveSkills(req.Metadata.Skills)
 	go func() {

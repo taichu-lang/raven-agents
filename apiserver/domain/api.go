@@ -31,3 +31,10 @@ func (c ApiCode) WithData[T any](data T) ApiResponse[T] {
 		Data: data,
 	}
 }
+
+func (c ApiCode) WithMessage(message string) ApiResponse[EmptyPayload] {
+	return ApiResponse[EmptyPayload]{
+		Code:    c,
+		Message: message,
+	}
+}

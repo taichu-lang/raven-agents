@@ -13,8 +13,8 @@ import (
 
 func main() {
 	logger := initLogger()
-	cfg := &configs.Config{}
-	if err := cfg.Load(); err != nil {
+	cfg, err := configs.LoadConfig()
+	if err != nil {
 		logger.Error("failed to resolve config", "err", err)
 		os.Exit(1)
 	}
