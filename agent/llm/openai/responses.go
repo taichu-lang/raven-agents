@@ -21,9 +21,9 @@ type Provider struct {
 	logger  *slog.Logger
 }
 
-func NewProvider(options *underlying.ProviderOptions) underlying.Provider {
+func NewProvider(options *underlying.ProviderOptions) *Provider {
 	return &Provider{
-		client:  util.NewStreamClient(),
+		client:  util.StreamClient,
 		options: options,
 		logger:  slog.Default().With("llm", "openai"),
 	}
@@ -55,7 +55,7 @@ func (p *Provider) Gen(
 			string(body),
 		)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.Endpoint, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.TextURL, bytes.NewReader(body))
 		if err != nil {
 			p.logger.Error("failed to create generation request", "err", err)
 			yield(nil, err)
@@ -74,8 +74,8 @@ func (p *Provider) Gen(
 				usage, chunk := streamEventToResponse(streaming.Current())
 
 				// Ensure that `usage` event comes before `final` event.
-				if usage != nil {
-					yield(usage, nil)
+				if usage != nil && !yield(usage, nil) {
+					return
 				}
 
 				// Discard some stream events.
@@ -101,11 +101,13 @@ func (p *Provider) Gen(
 
 			// Ensure that `usage` event comes before `final` event, matching the streaming order.
 			if usage := toUsageContent(response.Usage); usage != nil {
-				yield(&underlying.ResponseChunk{
+				if !yield(&underlying.ResponseChunk{
 					Type:     underlying.ResponseChunkTypeUsage,
 					Role:     underlying.RoleAssistant,
 					Contents: underlying.MessageContents{usage},
-				}, nil)
+				}, nil) {
+					return
+				}
 			}
 
 			for _, out := range response.Output {
@@ -116,21 +118,27 @@ func (p *Provider) Gen(
 						Role: underlying.RoleAssistant,
 					}
 					chunk.Contents = responsesToMessageContents(out.Content, chunk.Contents)
-					yield(chunk, nil)
+					if !yield(chunk, nil) {
+						return
+					}
 
 				case responses.ResponseFunctionToolCall:
-					yield(&underlying.ResponseChunk{
+					if !yield(&underlying.ResponseChunk{
 						Type:     underlying.ResponseChunkTypeFinal,
 						Role:     underlying.RoleAssistant,
 						Contents: underlying.MessageContents{underlying.NewToolCallContent(out.CallID, out.Name, out.Namespace, out.Arguments)},
-					}, nil)
+					}, nil) {
+						return
+					}
 
 				case responses.ResponseToolSearchCall:
-					yield(&underlying.ResponseChunk{
+					if !yield(&underlying.ResponseChunk{
 						Type:     underlying.ResponseChunkTypeFinal,
 						Role:     underlying.RoleAssistant,
 						Contents: underlying.MessageContents{toolSearchCallToContent(out)},
-					}, nil)
+					}, nil) {
+						return
+					}
 				}
 			}
 		}

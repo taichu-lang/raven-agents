@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -38,7 +39,7 @@ func main() {
 		Name: "hello-harness",
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("OPENAI_APIKEY"),
-			Endpoint:     os.Getenv("OPENAI_API"),
+			TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 			Instructions: "You are a helpful assistant!",
 			Catalog: &underlying.Catalog{
 				ID: "gpt-4.1",

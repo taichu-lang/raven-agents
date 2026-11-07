@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -21,7 +22,7 @@ func main() {
 
 	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
-		Endpoint:     os.Getenv("OPENAI_API"),
+		TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 		Instructions: "Extract entities from the input text",
 		Catalog: &underlying.Catalog{
 			ID: "gpt-6-astra",

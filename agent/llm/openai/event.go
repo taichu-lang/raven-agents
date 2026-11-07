@@ -159,10 +159,11 @@ func toUsageContent(usage responses.ResponseUsage) *underlying.UsageContent {
 	}
 
 	return &underlying.UsageContent{
-		InputTokenCount:       usage.InputTokens,
-		OutputTokenCount:      usage.OutputTokens,
-		TotalTokenCount:       usage.TotalTokens,
-		CachedInputTokenCount: usage.InputTokensDetails.CachedTokens,
-		ReasoningTokenCount:   usage.OutputTokensDetails.ReasoningTokens,
+		Input:      usage.InputTokens,
+		Output:     usage.OutputTokens,
+		Total:      usage.TotalTokens,
+		CacheRead:  usage.InputTokensDetails.CachedTokens,
+		CacheWrite: usage.InputTokensDetails.CacheWriteTokens,
+		Reasoning:  usage.OutputTokensDetails.ReasoningTokens,
 	}
 }

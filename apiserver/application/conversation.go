@@ -84,9 +84,9 @@ func (s *ChatService) genConversationTitle(
 	if c.Title == "" {
 		gen.done.Add(1)
 		runner := llm.NewRunner(&underlying.ProviderOptions{
-			ApiKey:   s.cfg.ApiKey,
-			Endpoint: s.cfg.Endpoint,
-			Catalog:  &catalog.Catalog,
+			ApiKey:  s.cfg.ApiKey,
+			TextURL: s.cfg.Endpoint,
+			Catalog: &catalog.Catalog,
 		})
 
 		var prompt bytes.Buffer

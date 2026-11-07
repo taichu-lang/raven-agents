@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -14,8 +15,8 @@ func main() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 
 	model := llm.NewRunner(&underlying.ProviderOptions{
-		ApiKey:   os.Getenv("OPENAI_APIKEY"),
-		Endpoint: os.Getenv("OPENAI_API"),
+		ApiKey:  os.Getenv("OPENAI_APIKEY"),
+		TextURL: fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 		Catalog: &underlying.Catalog{
 			ID: "gpt-6-astra",
 		},

@@ -21,32 +21,39 @@ const (
 	ContentKindToolCall   ContentKind = "tool_call"
 	ContentKindToolResult ContentKind = "tool_result"
 
-	// ContentKindReasoning carries the reasoning of a reasoning model. How it reaches the model
-	// is left to each provider, as the shape of the request differs between model apis.
+	// ContentKindReasoning carries the reasoning of a reasoning model. How it reaches the model is left to each
+	// provider, as the shape of the request differs between model apis.
 	ContentKindReasoning ContentKind = "reasoning"
 
-	// ContentKindSkill discloses a skill to the model. How it reaches the model is left to each
-	// provider, as the shape of the request differs between model apis.
+	// ContentKindSkill discloses a skill to the model. How it reaches the model is left to each provider, as
+	// the shape of the request differs between model apis.
 	ContentKindSkill ContentKind = "skill"
 
-	// ContentKindToolSearchCall carries a tool search issued by the model. How it reaches the
-	// model is left to each provider (ex: OpenAI renders it as a tool_search_call item).
+	// ContentKindToolSearchCall carries a tool search issued by the model. How it reaches the model is left to
+	// each provider (ex: OpenAI renders it as a tool_search_call item).
 	ContentKindToolSearchCall ContentKind = "tool_search_call"
 
-	// ContentKindToolSearchResult carries the tools a search resolved to. How it reaches the
-	// model is left to each provider (ex: OpenAI renders it as a tool_search_output item).
+	// ContentKindToolSearchResult carries the tools a search resolved to. How it reaches the model is left to
+	// each provider (ex: OpenAI renders it as a tool_search_output item).
 	ContentKindToolSearchResult ContentKind = "tool_search_result"
 )
 
 type MediaType string
 
 const (
-	MediaTypeImageJPG MediaType = "image/jpeg"
-	MediaTypeImagePNG MediaType = "image/png"
+	MediaTypeImageJPG  MediaType = "image/jpeg"
+	MediaTypeImagePNG  MediaType = "image/png"
+	MediaTypeImageWebP MediaType = "image/webp"
+	MediaTypeImageGIF  MediaType = "image/gif"
 )
 
 func (m MediaType) Image() bool {
-	return m == MediaTypeImageJPG || m == MediaTypeImagePNG
+	switch m {
+	case MediaTypeImageJPG, MediaTypeImagePNG, MediaTypeImageWebP, MediaTypeImageGIF:
+		return true
+	default:
+		return false
+	}
 }
 
 type MessageContent interface {
@@ -81,20 +88,40 @@ func (t *TextContent) MarshalJSON() ([]byte, error) {
 }
 
 type URIContent struct {
-	MediaType MediaType
-	URI       string
+	MediaType MediaType `json:"media_type"`
+	URI       string    `json:"uri"`
+}
+
+func NewURIContent(media MediaType, uri string) *URIContent {
+	return &URIContent{
+		MediaType: media,
+		URI:       uri,
+	}
 }
 
 func (t URIContent) Kind() ContentKind {
 	return ContentKindURI
 }
 
+func (t *URIContent) MarshalJSON() ([]byte, error) {
+	type alias URIContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(t),
+		Type:  t.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
 type UsageContent struct {
-	InputTokenCount       int64 `json:"input_tokens,omitzero"`
-	OutputTokenCount      int64 `json:"output_tokens,omitzero"`
-	TotalTokenCount       int64 `json:"total_tokens,omitzero"`
-	CachedInputTokenCount int64 `json:"cached_input_tokens,omitzero"`
-	ReasoningTokenCount   int64 `json:"reasoning_tokens,omitzero"`
+	Input      int64 `json:"input,omitzero"`
+	Output     int64 `json:"output,omitzero"`
+	Total      int64 `json:"total,omitzero"`
+	CacheRead  int64 `json:"cache_read,omitzero"`
+	CacheWrite int64 `json:"cache_write,omitzero"`
+	Reasoning  int64 `json:"reasoning,omitzero"`
 }
 
 func (u UsageContent) Kind() ContentKind {
@@ -177,11 +204,11 @@ func (t *ToolResultContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-// ReasoningContent carries the reasoning produced by a reasoning model. Summary holds the
-// human-readable reasoning summary for display only (ex: the "thinking" section of the UI,
-// including history replay); it is never sent back to the provider. EncryptedContent is the
-// base64-encoded, provider-encrypted reasoning payload; it must be preserved and sent back on
-// subsequent turns so the model keeps its reasoning context (ex: stateless mode or ZDR).
+// ReasoningContent carries the reasoning produced by a reasoning model. Summary holds the human-readable
+// reasoning summary for display only (ex: the "thinking" section of the UI, including history replay); it is
+// never sent back to the provider. EncryptedContent is the base64-encoded, provider-encrypted reasoning
+// payload; it must be preserved and sent back on subsequent turns so the model keeps its reasoning context (ex:
+// stateless mode or ZDR).
 type ReasoningContent struct {
 	ID               string `json:"id,omitzero"`
 	Summary          string `json:"summary,omitzero"`
@@ -271,9 +298,9 @@ func NewUnresolvedSkillContent(name string) *SkillContent {
 	}
 }
 
-// ToolSearchCallContent is a search the model issued, living in an assistant message. Arguments
-// is kept raw: the agent parses query/limit against the schema it advertised, so a schema change
-// never touches the message layer or the persisted format.
+// ToolSearchCallContent is a search the model issued, living in an assistant message. Arguments is kept raw:
+// the agent parses query/limit against the schema it advertised, so a schema change never touches the message
+// layer or the persisted format.
 type ToolSearchCallContent struct {
 	ID        string          `json:"id,omitzero"`
 	CallID    string          `json:"call_id"`
@@ -304,8 +331,8 @@ func (t *ToolSearchCallContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-// ToolDefinition is the serializable definition of a tool carried by a tool search result, so
-// the model sees the full shape (name, description, input schema) of a discovered tool.
+// ToolDefinition is the serializable definition of a tool carried by a tool search result, so the model sees
+// the full shape (name, description, input schema) of a discovered tool.
 type ToolDefinition struct {
 	Name string `json:"name"`
 	// Namespace is required for OpenAI.
@@ -344,9 +371,9 @@ func (t *ToolSearchResultContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-// UnmarshalMessageContents decodes the JSON produced by marshalling a MessageContents. It is the
-// inverse of the per type MarshalJSON methods: every content carries the type discriminator they
-// write next to their own fields.
+// UnmarshalMessageContents decodes the JSON produced by marshalling a MessageContents. It is the inverse of the
+// per type MarshalJSON methods: every content carries the type discriminator they write next to their own
+// fields.
 func UnmarshalMessageContents(data []byte) (MessageContents, error) {
 	if len(data) == 0 {
 		return MessageContents{}, nil
@@ -382,6 +409,8 @@ func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
 	switch discriminator.Type {
 	case ContentKindText:
 		content = new(TextContent)
+	case ContentKindURI:
+		content = new(URIContent)
 	case ContentKindUsage:
 		content = new(UsageContent)
 	case ContentKindData:

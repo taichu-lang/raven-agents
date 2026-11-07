@@ -134,8 +134,8 @@ func main() {
 		UserID:         "1",
 		ConversationID: uuid.NewString(),
 		LLM: &underlying.ProviderOptions{
-			ApiKey:   os.Getenv("OPENAI_APIKEY"),
-			Endpoint: os.Getenv("OPENAI_API"),
+			ApiKey:  os.Getenv("OPENAI_APIKEY"),
+			TextURL: fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 			Instructions: "You are a helpful assistant. Tools you need may not be in your tool " +
 				"list: discover them with a tool search first, then call them by name.",
 			Catalog: &underlying.Catalog{

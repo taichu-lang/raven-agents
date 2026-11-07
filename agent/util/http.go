@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var StreamClient *http.Client
+
 func UriAppend(uri string, part string) (string, error) {
 	u, err := url.Parse(uri)
 	if err != nil {
@@ -34,23 +36,26 @@ func UriAppendQuery(uri string, key string, value string) (string, error) {
 	return u.String(), nil
 }
 
-func newTransport(enableHTTP2 bool) *http.Transport {
+func newTransport(headerTimeout time.Duration, enableHTTP2 bool) *http.Transport {
 	protos := []string{"http/1.1"}
 	if enableHTTP2 {
 		protos = append(protos, "h2")
 	}
+
 	return &http.Transport{
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second, // if timeout, error is: timeout awaiting response headers
+		ResponseHeaderTimeout: headerTimeout, // if timeout, error is: timeout awaiting response headers
 		TLSHandshakeTimeout:   30 * time.Second,
 		TLSClientConfig:       &tls.Config{NextProtos: protos},
 		ForceAttemptHTTP2:     enableHTTP2,
 	}
 }
 
-func NewStreamClient() *http.Client {
-	return &http.Client{
-		Transport: newTransport(false),
+func init() {
+	// For long-running unary calls such as image generation, which routinely takes 30-90s before the first
+	// response header. So drops ResponseHeaderTimeout. The request context is the only deadline.
+	StreamClient = &http.Client{
+		Transport: newTransport(0, true),
 	}
 }

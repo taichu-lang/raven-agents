@@ -74,3 +74,43 @@ func TestToolSearchContentsRoundTrip(t *testing.T) {
 		t.Fatalf("the input schema lost its properties: %+v", definition.InputSchema)
 	}
 }
+
+// URI contents carry image addresses for vision understanding and generated image
+// results; a kind missing from unmarshalMessageContent would break conversation
+// restore, so the round trip is guarded here.
+func TestURIContentRoundTrip(t *testing.T) {
+	contents := MessageContents{
+		NewURIContent(MediaTypeImagePNG, "https://example.com/image.png"),
+		NewDataContent(MediaTypeImageWebP, []byte("webp-bytes")),
+	}
+
+	data, err := json.Marshal(contents)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := UnmarshalMessageContents(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(restored) != 2 {
+		t.Fatalf("expected 2 restored contents, got %d: %s", len(restored), data)
+	}
+
+	uri, ok := restored[0].(*URIContent)
+	if !ok {
+		t.Fatalf("the uri content restored as %T", restored[0])
+	}
+	if uri.MediaType != MediaTypeImagePNG || uri.URI != "https://example.com/image.png" {
+		t.Fatalf("unexpected uri content: %+v", uri)
+	}
+
+	binary, ok := restored[1].(*DataContent)
+	if !ok {
+		t.Fatalf("the data content restored as %T", restored[1])
+	}
+	if binary.MediaType != MediaTypeImageWebP || string(binary.Data) != "webp-bytes" {
+		t.Fatalf("unexpected data content: %+v", binary)
+	}
+}

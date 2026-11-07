@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -26,7 +27,7 @@ func (c *CustomMiddleware) Run(
 	return func(yield func(*underlying.ResponseChunk, error) bool) {
 		for chunk, err := range next(ctx, messages, options) {
 			if err == nil && chunk != nil && chunk.Type == underlying.ResponseChunkTypeUsage {
-				c.tokens += chunk.Contents[0].(*underlying.UsageContent).TotalTokenCount
+				c.tokens += chunk.Contents[0].(*underlying.UsageContent).Total
 			}
 
 			if !yield(chunk, err) {
@@ -67,7 +68,7 @@ func main() {
 		Name: "middleware-injection",
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("OPENAI_APIKEY"),
-			Endpoint:     os.Getenv("OPENAI_API"),
+			TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 			Instructions: "You are a helpful assistant!",
 			Catalog: &underlying.Catalog{
 				ID: "gpt-4.1",

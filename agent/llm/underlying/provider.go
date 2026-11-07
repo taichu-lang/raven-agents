@@ -37,16 +37,18 @@ const ToolSearchToolName = "tool_search"
 // `instructions`.
 type ProviderOptions struct {
 	ApiKey       string   `yaml:"api_key"               json:"api_key"`
-	Endpoint     string   `yaml:"endpoint"              json:"endpoint"`
 	Instructions string   `yaml:"instructions,omitzero" json:"instructions,omitzero"`
 	Catalog      *Catalog `yaml:"catalog"               json:"catalog"`
+
+	// TextURL is used for text generation, ex: https://api.openai.com/v1/responses
+	TextURL string `yaml:"text_url,omitzero"       json:"text_url,omitzero"`
+	// ImageGenURL is used for image generation, ex: https://api.openai.com/v1/images/generations
+	ImageGenURL string `yaml:"image_gen_url,omitzero"  json:"image_gen_url,omitzero"`
+	// ImageEditURL is used for image editing, ex: https://api.openai.com/v1/images/edits
+	ImageEditURL string `yaml:"image_edit_url,omitzero" json:"image_edit_url,omitzero"`
 }
 
 func (p *ProviderOptions) Validate() error {
-	if p.Endpoint == "" {
-		return errors.New("endpoint is required")
-	}
-
 	if p.Catalog == nil {
 		return errors.New("catalog is required")
 	}
@@ -71,11 +73,7 @@ type GenOptions struct {
 type WithGenOption func(*GenOptions)
 
 type Provider interface {
-	Gen(
-		ctx context.Context,
-		messages []*Message,
-		options *GenOptions,
-	) ResponseStream
+	Gen(ctx context.Context, messages []*Message, options *GenOptions) ResponseStream
 }
 
 func WithStream(stream bool) WithGenOption {
@@ -127,4 +125,41 @@ func WithDefaultOptions(options *GenOptions) *GenOptions {
 	}
 
 	return options
+}
+
+// ImageStream is the pull-based stream of image generation chunks, mirroring ResponseStream. The terminal chunk
+// always carries Result.
+type ImageStream = iter.Seq2[*ImageChunk, error]
+
+// ImageGenerator is the standalone image generation contract, separate from Provider because image generation
+// is a synchronous call outside the chat stream. Editing is the same call with ImageRequest.Images non-empty.
+type ImageGenerator interface {
+	GenerateImageStream(ctx context.Context, req *ImageRequest) (ImageStream, error)
+}
+
+// GenerateImage is the non-streaming convenience wrapper around ImageGenerator: it consumes the stream and
+// returns the terminal result. Use GenerateImageStream directly when progressive previews matter (ex:
+// user-facing rendering).
+func GenerateImage(ctx context.Context, g ImageGenerator, req *ImageRequest) (*ImageResult, error) {
+	stream, err := g.GenerateImageStream(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *ImageResult
+	for chunk, err := range stream {
+		if err != nil {
+			return nil, err
+		}
+
+		if chunk.Result != nil {
+			result = chunk.Result
+		}
+	}
+
+	if result == nil {
+		return nil, errors.New("image generation stream ended without a terminal result")
+	}
+
+	return result, nil
 }

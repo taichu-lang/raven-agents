@@ -247,6 +247,20 @@ func inputContentFromUser(
 
 		return inputs
 
+	case *underlying.URIContent:
+		// The images api accepts both http(s) and data URLs verbatim, so URI images (ex: an image address for
+		// vision understanding) pass through unchanged.
+		if c.MediaType.Image() {
+			return append(inputs, InputMessageContent{
+				Type: InputTypeImage,
+				InputImage: &InputImage{
+					ImageURL: c.URI,
+				},
+			})
+		}
+
+		return inputs
+
 	default:
 		panic("unsupported message content")
 	}

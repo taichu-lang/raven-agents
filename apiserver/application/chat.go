@@ -107,7 +107,7 @@ func (s *ChatService) Chat(
 		Store:          s.store.GetUnderlying(),
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       s.cfg.ApiKey,
-			Endpoint:     s.cfg.Endpoint,
+			TextURL:      s.cfg.Endpoint,
 			Instructions: s.cfg.Instructions,
 			Catalog:      &catalog.Catalog,
 		},

@@ -347,7 +347,7 @@ func (a *Agent) iterate(
 		case underlying.ResponseChunkTypeUsage:
 			usage, _ := chunk.Contents[0].(*underlying.UsageContent)
 			if usage != nil {
-				a.State.TokenUsage += usage.TotalTokenCount
+				a.State.TokenUsage += usage.Total
 				// The provider yields the usage chunk before the final one, so consumers can rely on llm.usage
 				// preceding llm.complete.
 				a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMUsage, usage)

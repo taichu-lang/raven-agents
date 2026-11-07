@@ -178,11 +178,12 @@ func (s *TraceSubscriber) onLLMUsage(usage *underlying.UsageContent) {
 	}
 
 	s.llmSpan.SetAttributes(
-		attribute.Int64(observability.LLMTokenCountPrompt, usage.InputTokenCount),
-		attribute.Int64(observability.LLMTokenCountPromptDetailsCacheRead, usage.CachedInputTokenCount),
-		attribute.Int64(observability.LLMTokenCountCompletion, usage.OutputTokenCount),
-		attribute.Int64(observability.LLMTokenCountCompletionDetailsReasoning, usage.ReasoningTokenCount),
-		attribute.Int64(observability.LLMTokenCountTotal, usage.TotalTokenCount),
+		attribute.Int64(observability.LLMTokenCountPrompt, usage.Input),
+		attribute.Int64(observability.LLMTokenCountPromptDetailsCacheRead, usage.CacheRead),
+		attribute.Int64(observability.LLMTokenCountPromptDetailsCacheWrite, usage.CacheWrite),
+		attribute.Int64(observability.LLMTokenCountCompletion, usage.Output),
+		attribute.Int64(observability.LLMTokenCountCompletionDetailsReasoning, usage.Reasoning),
+		attribute.Int64(observability.LLMTokenCountTotal, usage.Total),
 	)
 }
 

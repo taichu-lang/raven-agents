@@ -75,8 +75,8 @@ func main() {
 	a := agent.New(bus, registry, &agent.AgentOptions{
 		Name: "harness-function",
 		LLM: &underlying.ProviderOptions{
-			ApiKey:   os.Getenv("OPENAI_APIKEY"),
-			Endpoint: os.Getenv("OPENAI_API"),
+			ApiKey:  os.Getenv("OPENAI_APIKEY"),
+			TextURL: fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 			Instructions: `
 		You are a travel assistant. When users ask travel-related questions, please follow this workflow:
 
