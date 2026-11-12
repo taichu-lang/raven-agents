@@ -221,6 +221,9 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 	return items
 }
 
+// summaryHeader prefixes a compaction summary when rendered as user input text.
+const summaryHeader = "[context summary]\n"
+
 func inputContentFromUser(
 	content underlying.MessageContent,
 	inputs []InputMessageContent,
@@ -231,6 +234,14 @@ func inputContentFromUser(
 			Type: InputTypeUserText,
 			InputText: &InputText{
 				Text: c.Text,
+			},
+		})
+
+	case *underlying.SummaryContent:
+		return append(inputs, InputMessageContent{
+			Type: InputTypeUserText,
+			InputText: &InputText{
+				Text: summaryHeader + c.Text,
 			},
 		})
 

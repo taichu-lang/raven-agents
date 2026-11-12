@@ -199,6 +199,13 @@ Registry 的 active set 在每个 turn 开始时计算一次；skill 目录的�
 
 **压缩策略**：truncate / summarize / hierarchical memory / tool-result prune，可插拔。
 
+> **v1 落地状态（2026-11）**：主动阈值触发的 LLM 总结压缩已实现，见 `docs/context_compaction.md`。
+> 触发点为 `iterate` 内 Stage 3（工具结果落库后、LLM 调用前），阈值解析顺序
+> `Budget.MaxContextTokens` → `Catalog.Limit.Context × SafetyFactor(0.8)` → 禁用。
+> 与本文 §4 草图的一处偏差：覆盖范围用 `covers_from/to_message_id`（message uuid）标定，
+> 查询时解析为行 id，未引入 `branch_id/run_id` 列（留待 Branch 特性）；provider 溢出错误
+> 兜底（context_length_exceeded 重试）未实现，留待 v1.5。
+
 ### 3.8 PermissionPolicy + HITL
 
 三种决策：`Allow` / `Deny` / `Ask`。与 Hook 合并：PreToolUse hook 优先，Policy 兜底。

@@ -177,13 +177,33 @@ func (s *ConversationStore) GetMessages(
 	if err := s.db.NewSelect().
 		Model(&rows).
 		Where("conversation_id = ?", conversationID).
-		Order("id").
+		Order("turn_seq", "id").
 		Scan(ctx); err != nil {
 		if database.IsNoRows(err) {
 			return []database.MessageModel{}, nil
 		}
 
 		return nil, fmt.Errorf("load messages of conversation %s: %w", conversationID, err)
+	}
+
+	return rows, nil
+}
+
+func (s *ConversationStore) GetTurns(
+	ctx context.Context,
+	conversationID string,
+) ([]*database.TurnModel, error) {
+	rows := make([]*database.TurnModel, 0)
+	if err := s.db.NewSelect().
+		Model(&rows).
+		Where("conversation_id = ?", conversationID).
+		Order("turn_seq").
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return []*database.TurnModel{}, nil
+		}
+
+		return nil, fmt.Errorf("load turns of conversation %s: %w", conversationID, err)
 	}
 
 	return rows, nil

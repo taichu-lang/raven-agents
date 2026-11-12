@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/hook"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/agent/persistent"
 	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 	"github.com/taichu-lang/raven-agents/sandbox"
@@ -23,6 +23,10 @@ import (
 
 var (
 	ErrBudgetExceeded = errors.New("budget exceeded")
+
+	// ErrCompactionExhausted is returned when a turn hits its compaction cap: the context keeps crossing the
+	// trigger threshold right after each compaction, so the turn is interrupted rather than compacting forever.
+	ErrCompactionExhausted = errors.New("compaction exhausted")
 )
 
 type AgentOptions struct {
@@ -47,18 +51,24 @@ type AgentOptions struct {
 	// Middlewares are appended to the default LLM middleware chain, so they wrap every LLM call of the agent,
 	// one per iteration. They run closest to the provider.
 	Middlewares []llm.Middleware
+
+	// Compact configures context compaction; nil selects the defaults. Compaction stays disabled when a context
+	// window is not provided.
+	Compact *CompactOptions
 }
 
 type Agent struct {
 	State         *AgentState
 	LLM           *llm.Runner
 	Budget        Budget
-	EventBus      event.Bus
 	SkillRegistry *SkillRegistry
 	ToolRegistry  *tool.ToolRegistry
 	Hooks         *hook.Registry
 	Store         Repository
 	Sandbox       sandbox.Sandbox
+
+	mq             event.Bus
+	contextManager *ContextManager
 
 	// subscription feeds the tracer goroutine; tracerDone is closed once that goroutine has drained
 	// the subscription channel and returned.
@@ -74,15 +84,16 @@ func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agen
 
 	a := &Agent{
 		State: &AgentState{
-			Status:         persistent.TurnStatusIdle,
+			Status:         database.TurnStatusIdle,
 			StartedAt:      time.Now(),
 			Model:          options.LLM.Catalog.ID,
 			UserID:         options.UserID,
 			ConversationID: options.ConversationID,
 		},
-		EventBus:     eventBus,
+		mq:           eventBus,
 		ToolRegistry: tr,
 		Hooks:        hook.NewRegistry(),
+		LLM:          llm.NewRunner(options.LLM, options.Middlewares...),
 	}
 	a.init(options)
 	return a
@@ -95,13 +106,14 @@ func (a *Agent) init(options *AgentOptions) {
 		a.Store = store
 	}
 
+	a.contextManager = NewContextManager(options.LLM, options.Compact, options.Middlewares, a.Store)
+
 	// As the Agent instance can be used in multi-turn conversation, ex: keep the Agent instance alive in a
 	// RunManager in a standalone environment, restore the previous turns here rather than before each turn.
 	if err := a.restoreIfPresent(options.ConversationID); err != nil {
 		panic(fmt.Errorf("failed to restore messages, %v", err))
 	}
 
-	a.LLM = llm.NewRunner(options.LLM, options.Middlewares...)
 	a.Budget.MaxIterations = DefaultMaxIterations
 	a.SkillRegistry = NewSkillRegistry(options.SkillDirs)
 
@@ -124,7 +136,7 @@ func (a *Agent) init(options *AgentOptions) {
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
 	a.tracer = NewTraceSubscriber(options.Name, options.UserID)
-	a.subscription = a.EventBus.Subscribe()
+	a.subscription = a.mq.Subscribe()
 	a.tracerDone = make(chan struct{})
 	go func() {
 		defer close(a.tracerDone)
@@ -150,7 +162,7 @@ func (a *Agent) addBuiltinTools() {
 		a.ToolRegistry.Register(NewExecTool(a.Sandbox), nil)
 	}
 
-	a.ToolRegistry.Register(NewQuestionTool(a.EventBus), nil)
+	a.ToolRegistry.Register(NewQuestionTool(a.mq), nil)
 
 	// The tool search entry is broadcast only while deferred tools exist; the active set is
 	// computed once per turn, and deferred tools are registered before the turn starts.
@@ -163,7 +175,7 @@ func (a *Agent) addBuiltinTools() {
 // still buffered in the subscription channel before closing the sandbox and the store.
 func (a *Agent) Shutdown(ctx context.Context) error {
 	defer a.tracer.Close()
-	if err := a.EventBus.Unsubscribe(a.subscription.ID); err != nil {
+	if err := a.mq.Unsubscribe(a.subscription.ID); err != nil {
 		return err
 	}
 
@@ -198,10 +210,11 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 	}
 
 	a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
-		Turn:     turn.TurnSeq,
-		Model:    a.State.Model,
-		Provider: "openai",
-		Messages: messages,
+		ConversationID: a.State.ConversationID,
+		TurnSeq:        turn.TurnSeq,
+		Model:          a.State.Model,
+		Provider:       a.contextManager.catalog.Provider,
+		Messages:       messages,
 	})
 	defer func() {
 		a.saveTurn(ctx)
@@ -218,7 +231,7 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 // per pending tool call. The agent instance may be a fresh one: the pending calls are restored from the latest
 // turn of the conversation when the agent is created.
 func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultContent) error {
-	if a.State.Status != persistent.TurnStatusWaitingApproval || len(a.State.Pending) == 0 {
+	if a.State.Status != database.TurnStatusWaitingApproval || len(a.State.Pending) == 0 {
 		return errors.New("the conversation has no turn waiting for a response")
 	}
 
@@ -246,13 +259,15 @@ func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultConte
 	// The turn goes on rather than starting over, so the counters restored from the store are kept.
 	a.State.StartedAt = time.Now()
 	a.State.Pending = a.State.Pending[:0]
-	a.State.Status = persistent.TurnStatusRunning
+	a.State.Status = database.TurnStatusRunning
 
+	// TODO(Leo): change event to EventTurnResume ?
 	a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
-		Turn:     a.State.TurnSeq,
-		Model:    a.State.Model,
-		Provider: "openai",
-		Messages: []*underlying.Message{message},
+		ConversationID: a.State.ConversationID,
+		TurnSeq:        a.State.TurnSeq,
+		Model:          a.State.Model,
+		Provider:       "openai",
+		Messages:       []*underlying.Message{message},
 	})
 	defer func() {
 		a.saveTurn(ctx)
@@ -268,32 +283,36 @@ func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultConte
 // loop iterates until the turn is done, paused for the user, or failed.
 func (a *Agent) loop(ctx context.Context) error {
 	// The system and tools prompt should keep immutable during the turn.
-	a.State.Tools = a.ToolRegistry.Active()
-	opts := make([]underlying.WithGenOption, 0, len(a.State.Tools))
-	for _, t := range a.State.Tools {
+	tools := a.ToolRegistry.Active()
+	opts := make([]underlying.WithGenOption, 0, len(tools))
+	for _, t := range tools {
 		opts = append(opts, underlying.WithTool(t))
 	}
 
 	for {
 		if a.Budget.Exceeded(a.State) {
-			a.State.Status = persistent.TurnStatusInterrupted
+			a.State.Status = database.TurnStatusInterrupted
 			return ErrBudgetExceeded
 		}
 
 		a.State.Iterations++
 		if err := a.iterate(ctx, opts); err != nil {
-			a.State.Status = persistent.TurnStatusFailed
+			if errors.Is(err, ErrCompactionExhausted) {
+				a.State.Status = database.TurnStatusInterrupted
+			} else {
+				a.State.Status = database.TurnStatusFailed
+			}
 			return err
 		}
 
 		// The turn paused on a human approval: the approval event has been emitted, and the deferred UpdateTurn
 		// saves the state, which the resume logic restores once the user responds.
-		if a.State.Status == persistent.TurnStatusWaitingApproval {
+		if a.State.Status == database.TurnStatusWaitingApproval {
 			return nil
 		}
 
 		if len(a.State.ToolCalls) == 0 && len(a.State.ToolSearches) == 0 {
-			a.State.Status = persistent.TurnStatusDone
+			a.State.Status = database.TurnStatusDone
 			return nil
 		}
 	}
@@ -317,16 +336,26 @@ func (a *Agent) iterate(
 
 		// The tool calls hit one that needs the user's approval: close the iteration and skip the LLM call, so
 		// Run saves the state and exits without touching the status.
-		if a.State.Status == persistent.TurnStatusWaitingApproval {
+		if a.State.Status == database.TurnStatusWaitingApproval {
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventIterationEnd, nil)
 			return nil
 		}
 	}
 
+	compact, err := a.contextManager.CompactIfNeed(ctx, a.State, a.onEvent)
+	if err != nil {
+		return err
+	}
+
+	if compact != nil {
+		// Compaction is real spend and counts toward the time-dimension budgets.
+		a.State.TokenUsage += compact.Usage.Total
+	}
+
 	// The input is captured at the call site so that it includes the tool results just added by
 	// invokeToolCalls; consumers can rely on llm.start preceding the delta/usage/complete events.
-	a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMStart, a.State.Messages)
-	for chunk, err := range a.LLM.Run(ctx, a.State.Messages, opts...) {
+	a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMStart, a.contextManager.Messages)
+	for chunk, err := range a.LLM.Run(ctx, a.contextManager.Messages, opts...) {
 		if err != nil {
 			a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMError, err)
 			return err
@@ -348,6 +377,8 @@ func (a *Agent) iterate(
 			usage, _ := chunk.Contents[0].(*underlying.UsageContent)
 			if usage != nil {
 				a.State.TokenUsage += usage.Total
+				a.contextManager.OnUsage(usage)
+
 				// The provider yields the usage chunk before the final one, so consumers can rely on llm.usage
 				// preceding llm.complete.
 				a.onEvent(ctx, event.SourceTypeAgent, event.EventLLMUsage, usage)
@@ -365,7 +396,7 @@ func (a *Agent) onEvent(
 	name event.EventName,
 	payload interface{},
 ) {
-	if err := a.EventBus.Emit(ctx, &event.Event{
+	if err := a.mq.Emit(ctx, &event.Event{
 		ID:      uuid.NewString(),
 		Source:  source,
 		Name:    name,
@@ -382,7 +413,7 @@ func (a *Agent) checkpoint(ctx context.Context, messages []*underlying.Message) 
 		}
 	}
 
-	a.State.Messages = append(a.State.Messages, messages...)
+	a.contextManager.Messages = append(a.contextManager.Messages, messages...)
 	err := a.Store.StoreMessages(ctx, &a.State.TurnContext, messages)
 	if err != nil {
 		slog.Warn("failed to persistent messages into store", "err", err)
@@ -400,7 +431,7 @@ func (a *Agent) invokeToolCalls(ctx context.Context) {
 	}
 
 	if !continueInvoke {
-		a.State.Status = persistent.TurnStatusWaitingApproval
+		a.State.Status = database.TurnStatusWaitingApproval
 		return
 	}
 
@@ -493,6 +524,59 @@ func (a *Agent) invokeOneTool(
 	}
 
 	return underlying.NewToolResultContent(call.ID, call.Name, string(encoded), false)
+}
+
+// restoreToolCalls rebuilds Pending and ToolCalls from the last assistant message. Pending is what the hooks
+// held back, which is the only part that cannot be derived; ToolCalls are the calls the hooks let through that
+// still have no result.
+func (a *Agent) restoreToolCalls(pendingIDs []string) {
+	answered := make(map[string]struct{})
+	for i := len(a.contextManager.Messages) - 1; i >= 0; i-- {
+		msg := a.contextManager.Messages[i]
+		if msg.Role == underlying.RoleTool {
+			for _, content := range msg.Contents {
+				if r, ok := content.(*underlying.ToolResultContent); ok {
+					answered[r.ToolCallID] = struct{}{}
+				}
+			}
+
+			continue
+		}
+
+		if msg.Role != underlying.RoleAssistant {
+			return
+		}
+
+		for _, content := range msg.Contents {
+			call, ok := content.(*underlying.ToolCallContent)
+			if !ok {
+				continue
+			}
+
+			if _, done := answered[call.ID]; done {
+				continue
+			}
+
+			if slices.Contains(pendingIDs, call.ID) {
+				a.State.Pending = append(a.State.Pending, call)
+			} else {
+				a.State.ToolCalls = append(a.State.ToolCalls, call)
+			}
+		}
+
+		return
+	}
+}
+
+// saveTurn syncs the mutable turn state, including the calls waiting for the user, to the store.
+func (a *Agent) saveTurn(ctx context.Context) {
+	pendingIDs := make([]string, 0, len(a.State.Pending))
+	for _, call := range a.State.Pending {
+		pendingIDs = append(pendingIDs, call.ID)
+	}
+
+	a.State.PendingTools = pendingIDs
+	_ = a.Store.UpdateTurn(ctx, &a.State.TurnContext)
 }
 
 func (o *AgentOptions) validate() error {

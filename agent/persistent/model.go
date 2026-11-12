@@ -1,55 +1,45 @@
 package persistent
 
 import (
-	"encoding/json"
-
+	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/uptrace/bun"
 )
 
-// TurnModel maps a single conversation turn onto the `turns` table. Keep it in sync with
-// migrations/05_turns.up.sql.
-type TurnModel struct {
-	bun.BaseModel `bun:"table:turns,alias:t"`
+// SummaryModel maps a context compaction summary onto the `message_summaries` table. Keep it in sync with
+// migrations/01_messages.up.sql.
+type SummaryModel struct {
+	bun.BaseModel `bun:"table:message_summaries,alias:ms"`
 
 	ID int64 `bun:"id,pk,autoincrement"`
 
-	// ConversationID identifies the multi-turn conversation the turn belongs to.
+	// ConversationID identifies the multi-turn conversation the summary belongs to.
 	ConversationID string `bun:"conversation_id,notnull"`
 
-	// TurnSeq is the index of the turn within the conversation.
+	// TurnSeq is the index of the turn that produced the summary.
 	TurnSeq int64 `bun:"turn_seq,notnull"`
 
-	// UserMessageID is the message that opened the turn.
-	UserMessageID string `bun:"user_message_id,notnull"`
+	// CoversFromMessageID is the message_id of the first message folded into the summary.
+	CoversFromMessageID string `bun:"covers_from_message_id,notnull"`
 
-	// Status is the lifecycle state of the turn, one of the TurnStatus constants.
-	Status TurnStatus `bun:"status,notnull"`
+	// CoversToMessageID is the message_id of the last message folded into the summary; the compacted view
+	// resumes right after it.
+	CoversToMessageID string `bun:"covers_to_message_id,notnull"`
 
-	// LeaseUntil is the unix timestamp in seconds until which the current holder owns the turn.
-	LeaseUntil int64 `bun:"lease_until,notnull"`
+	// Summary is the compaction text that replaces the covered messages in the LLM view.
+	Summary string `bun:"summary,notnull"`
 
-	// Epoch fences off stale holders: every takeover of the turn increments it.
-	Epoch int64 `bun:"epoch,notnull"`
-
-	// CancelRequested asks the holder instance to cancel the turn.
-	CancelRequested bool `bun:"cancel_requested,notnull"`
-
-	// Iterations counts the agent loop iterations the turn has run.
-	Iterations int64 `bun:"iterations,notnull"`
-
-	// TokensUsed accumulates the tokens the turn has consumed.
-	TokensUsed int64 `bun:"tokens_used,notnull"`
-
-	// LastMessageID is the most recent message persisted for the turn.
-	LastMessageID string `bun:"last_message_id,notnull"`
-
-	// PendingTools holds the IDs of the tool calls waiting for the user's response while the turn is in
-	// waiting_approval; the calls themselves live in the messages.
-	PendingTools json.RawMessage `bun:"pending_tools,notnull"`
+	// Tokens is the token spend of the summarization call that produced the summary.
+	Tokens int64 `bun:"tokens,notnull"`
 
 	// CreatedAt is a unix timestamp in seconds, assigned by the application layer.
 	CreatedAt int64 `bun:"created_at,notnull"`
+}
 
-	// UpdatedAt is a unix timestamp in seconds, assigned by the application layer.
-	UpdatedAt int64 `bun:"updated_at,notnull"`
+// ToMessage synthesizes the head message of the compacted LLM view: the summary re-enters the conversation as a
+// user message carrying a SummaryContent, which each provider adapter renders in the wrapping format its model
+// family prefers.
+func (m *SummaryModel) ToMessage() *underlying.Message {
+	return underlying.NewMessage(underlying.RoleUser, underlying.MessageContents{
+		underlying.NewSummaryContent(m.Summary),
+	})
 }

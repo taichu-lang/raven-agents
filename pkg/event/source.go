@@ -29,7 +29,21 @@ const (
 	EventToolCall          EventName = "tool.call"
 	EventToolResult        EventName = "tool.result"
 	EventToolSearch        EventName = "tool.search"
+	EventCompactStart      EventName = "compact.start"
+	EventCompactEnd        EventName = "compact.end"
 )
+
+// CompactPayload reports one context compaction: the projected context size against the trigger
+// threshold, how the view changed, and the running compaction count of the turn. DroppedMessages,
+// KeptMessages and SummaryTokens are only set on compact.end.
+type CompactPayload struct {
+	Projected       uint64 `json:"projected"`
+	Threshold       uint64 `json:"threshold"`
+	SummaryTokens   int64  `json:"summary_tokens,omitzero"`
+	DroppedMessages int    `json:"dropped_messages,omitzero"`
+	KeptMessages    int    `json:"kept_messages,omitzero"`
+	Compactions     int64  `json:"compactions"`
+}
 
 // ToolSearchPayload reports one executed tool search: the query and the names of the tools it resolved to.
 type ToolSearchPayload struct {
@@ -45,10 +59,11 @@ type Event struct {
 }
 
 type TurnStartPayload struct {
-	Turn     int64
-	Model    string
-	Provider string
-	Messages []*underlying.Message `json:"messages"`
+	ConversationID string                `json:"conversation_id"`
+	TurnSeq        int64                 `json:"turn_seq"`
+	Model          string                `json:"model"`
+	Provider       string                `json:"provider"`
+	Messages       []*underlying.Message `json:"messages"`
 }
 
 type HumanApprovalScope string

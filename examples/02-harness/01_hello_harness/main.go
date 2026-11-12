@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -38,11 +37,11 @@ func main() {
 	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
 		Name: "hello-harness",
 		LLM: &underlying.ProviderOptions{
-			ApiKey:       os.Getenv("OPENAI_APIKEY"),
-			TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
+			ApiKey:       os.Getenv("RAVEN_APIKEY"),
+			TextURL:      os.Getenv("RAVEN_API"),
 			Instructions: "You are a helpful assistant!",
 			Catalog: &underlying.Catalog{
-				ID: "gpt-4.1",
+				ID: "qwen3.8-flash",
 			},
 		},
 		UserID:         "1",

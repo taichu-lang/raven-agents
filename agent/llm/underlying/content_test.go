@@ -11,9 +11,8 @@ type roundTripInput struct {
 	Path string `json:"path" jsonschema:"File path."`
 }
 
-// The tool search contents are persisted with the conversation; a kind missing from
-// unmarshalMessageContent would break restoreIfPresent and panic agent.New for every session
-// that contains a search.
+// The tool search contents are persisted with the conversation; a kind missing from unmarshalMessageContent
+// would break restoreIfPresent and panic agent.New for every session that contains a search.
 func TestToolSearchContentsRoundTrip(t *testing.T) {
 	schema, err := tool.SchemaFor[roundTripInput]()
 	if err != nil {
@@ -75,9 +74,39 @@ func TestToolSearchContentsRoundTrip(t *testing.T) {
 	}
 }
 
-// URI contents carry image addresses for vision understanding and generated image
-// results; a kind missing from unmarshalMessageContent would break conversation
-// restore, so the round trip is guarded here.
+// Summary contents are synthesized into the compacted view rather than persisted, but a kind missing from
+// unmarshalMessageContent would turn an accidental round trip into a hard error, so the round trip is guarded
+// here.
+func TestSummaryContentRoundTrip(t *testing.T) {
+	contents := MessageContents{
+		NewSummaryContent("user asked for a pdf conversion; the file was written to /tmp/out.md"),
+	}
+
+	data, err := json.Marshal(contents)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := UnmarshalMessageContents(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(restored) != 1 {
+		t.Fatalf("expected 1 restored content, got %d: %s", len(restored), data)
+	}
+
+	summary, ok := restored[0].(*SummaryContent)
+	if !ok {
+		t.Fatalf("the summary restored as %T", restored[0])
+	}
+	if summary.Text != "user asked for a pdf conversion; the file was written to /tmp/out.md" {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+}
+
+// URI contents carry image addresses for vision understanding and generated image results; a kind missing from
+// unmarshalMessageContent would break conversation restore, so the round trip is guarded here.
 func TestURIContentRoundTrip(t *testing.T) {
 	contents := MessageContents{
 		NewURIContent(MediaTypeImagePNG, "https://example.com/image.png"),

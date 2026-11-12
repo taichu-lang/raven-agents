@@ -81,6 +81,40 @@ func (lm *LoggerMiddleware) Run(
 	}
 }
 
+// SummaryTagMiddleware re-tags the final chunk of a context compaction stream as ResponseChunkTypeSummary, so
+// that the other middlewares on the shared chain (ex: metering) can attribute the call to compaction. It must
+// run closest to the provider: the compactor appends it after the user middlewares, so the re-tagged chunks
+// flow back through all of them.
+type SummaryTagMiddleware struct {
+}
+
+func NewSummaryTagMiddleware() Middleware {
+	return &SummaryTagMiddleware{}
+}
+
+func (s *SummaryTagMiddleware) Run(
+	next RunFunc,
+	ctx context.Context,
+	messages []*underlying.Message,
+	options *underlying.GenOptions,
+) underlying.ResponseStream {
+	return func(yield func(*underlying.ResponseChunk, error) bool) {
+		for chunk, err := range next(ctx, messages, options) {
+			if err == nil && chunk.Type == underlying.ResponseChunkTypeFinal {
+				chunk = &underlying.ResponseChunk{
+					Message:      chunk.Message,
+					Type:         underlying.ResponseChunkTypeSummary,
+					FinishReason: chunk.FinishReason,
+				}
+			}
+
+			if !yield(chunk, err) {
+				return
+			}
+		}
+	}
+}
+
 type StructuredOutputMiddleware struct {
 }
 

@@ -33,6 +33,11 @@ const (
 	ResponseChunkTypeDelta          ResponseChunkType = "delta"
 	ResponseChunkTypeFinal          ResponseChunkType = "final"
 	ResponseChunkTypeUsage          ResponseChunkType = "usage"
+
+	// ResponseChunkTypeSummary marks the final chunk of a context compaction call, re-tagged by the
+	// SummaryTagMiddleware so that middlewares on the shared chain can attribute the call (and its usage) to
+	// compaction. The agent loop never sees this type: the compaction stream is consumed inside the compactor.
+	ResponseChunkTypeSummary ResponseChunkType = "summary"
 )
 
 type ResponseChunk struct {

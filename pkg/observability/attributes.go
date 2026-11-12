@@ -127,6 +127,16 @@ const (
 	LLMTokenCountTotal                      = "llm.token_count.total"
 )
 
+// Compaction attributes for the compact span: the projected context size against the trigger
+// threshold, and how the view changed through the compaction.
+const (
+	CompactProjectedTokens = "compact.projected_tokens"
+	CompactThreshold       = "compact.threshold"
+	CompactDroppedMessages = "compact.dropped_messages"
+	CompactKeptMessages    = "compact.kept_messages"
+	CompactSummaryTokens   = "compact.summary_tokens"
+)
+
 // Cost attributes for LLM spans. Values are USD floats.
 const (
 	LLMCostPrompt                     = "llm.cost.prompt"

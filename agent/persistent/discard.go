@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 )
 
 type DiscardStore struct{}
@@ -14,17 +15,17 @@ func (d *DiscardStore) AddTurn(
 	ctx context.Context,
 	turnContext *TurnContext,
 	userMessageID string,
-) (*TurnModel, error) {
+) (*database.TurnModel, error) {
 	if turnContext == nil {
 		return nil, errors.New("turn context is nil")
 	}
 
 	now := time.Now().Unix()
-	return &TurnModel{
+	return &database.TurnModel{
 		ConversationID: turnContext.ConversationID,
 		TurnSeq:        1,
 		UserMessageID:  userMessageID,
-		Status:         TurnStatusRunning,
+		Status:         database.TurnStatusRunning,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}, nil
@@ -37,7 +38,7 @@ func (d *DiscardStore) UpdateTurn(
 	return nil
 }
 
-func (d *DiscardStore) LoadLatestTurn(ctx context.Context, conversationID string) (*TurnModel, error) {
+func (d *DiscardStore) LoadLatestTurn(ctx context.Context, conversationID string) (*database.TurnModel, error) {
 	return nil, nil
 }
 
@@ -51,6 +52,26 @@ func (d *DiscardStore) StoreMessages(
 
 func (d *DiscardStore) LoadMessages(ctx context.Context, conversationID string) ([]*underlying.Message, error) {
 	return []*underlying.Message{}, nil
+}
+
+func (d *DiscardStore) LoadMessagesAfter(
+	ctx context.Context,
+	conversationID string,
+	afterMessageID string,
+) ([]*underlying.Message, error) {
+	return []*underlying.Message{}, nil
+}
+
+func (d *DiscardStore) StoreSummary(
+	ctx context.Context,
+	turnContext *TurnContext,
+	summary *SummaryModel,
+) error {
+	return nil
+}
+
+func (d *DiscardStore) LoadLatestSummary(ctx context.Context, conversationID string) (*SummaryModel, error) {
+	return nil, nil
 }
 
 func (d *DiscardStore) Close() error {

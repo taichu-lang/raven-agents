@@ -36,6 +36,11 @@ const (
 	// ContentKindToolSearchResult carries the tools a search resolved to. How it reaches the model is left to
 	// each provider (ex: OpenAI renders it as a tool_search_output item).
 	ContentKindToolSearchResult ContentKind = "tool_search_result"
+
+	// ContentKindSummary carries a compaction summary that replaces the covered messages in the LLM view. How
+	// it reaches the model is left to each provider (ex: OpenAI renders it as a user input text with a header),
+	// as the wrapping format preferred differs between model families.
+	ContentKindSummary ContentKind = "summary"
 )
 
 type MediaType string
@@ -116,6 +121,7 @@ func (t *URIContent) MarshalJSON() ([]byte, error) {
 }
 
 type UsageContent struct {
+	// Input is the number from provider, without deducting `CacheRead`.
 	Input      int64 `json:"input,omitzero"`
 	Output     int64 `json:"output,omitzero"`
 	Total      int64 `json:"total,omitzero"`
@@ -371,6 +377,34 @@ func (t *ToolSearchResultContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
+// SummaryContent carries the compaction summary that replaces the covered messages in the LLM view. It only
+// holds the text the model reads.
+type SummaryContent struct {
+	Text string `json:"text"`
+}
+
+func NewSummaryContent(text string) *SummaryContent {
+	return &SummaryContent{
+		Text: text,
+	}
+}
+
+func (s SummaryContent) Kind() ContentKind {
+	return ContentKindSummary
+}
+
+func (s *SummaryContent) MarshalJSON() ([]byte, error) {
+	type alias SummaryContent
+	tmp := struct {
+		*alias
+		Type ContentKind `json:"type"`
+	}{
+		alias: (*alias)(s),
+		Type:  s.Kind(),
+	}
+	return json.Marshal(tmp)
+}
+
 // UnmarshalMessageContents decodes the JSON produced by marshalling a MessageContents. It is the inverse of the
 // per type MarshalJSON methods: every content carries the type discriminator they write next to their own
 // fields.
@@ -427,6 +461,8 @@ func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
 		content = new(ToolSearchCallContent)
 	case ContentKindToolSearchResult:
 		content = new(ToolSearchResultContent)
+	case ContentKindSummary:
+		content = new(SummaryContent)
 	default:
 		return nil, fmt.Errorf("unmarshal message content: unknown type %q", discriminator.Type)
 	}

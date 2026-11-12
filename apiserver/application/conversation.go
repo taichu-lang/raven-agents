@@ -53,19 +53,34 @@ func (s *ChatService) GetConversation(
 ) (*domain.ConversationView, error) {
 	cm, err := s.store.Get(ctx, conversationID)
 	if cm != nil {
+		tm, err := s.store.GetTurns(ctx, conversationID)
+		if err != nil {
+			return nil, err
+		}
+
 		mm, err := s.store.GetMessages(ctx, conversationID)
 		if err != nil {
 			return nil, err
 		}
 
-		messages, err := database.FromMessageRows(mm)
-		if err != nil {
-			return nil, err
+		// Group the messages under their turn; the rows arrive ordered by (turn_seq, id), so each group keeps
+		// chronological order.
+		messagesByTurn := make(map[int64][]*underlying.Message)
+		grouped := make(map[int64][]database.MessageModel)
+		for _, row := range mm {
+			grouped[row.TurnSeq] = append(grouped[row.TurnSeq], row)
+		}
+		for seq, rows := range grouped {
+			messages, err := database.FromMessageRows(rows)
+			if err != nil {
+				return nil, err
+			}
+			messagesByTurn[seq] = messages
 		}
 
 		view := &domain.ConversationView{
 			Conversation: domain.ConversationFromModel(cm),
-			Messages:     messages,
+			Turns:        domain.TurnsFromModels(tm, messagesByTurn),
 		}
 		return view, nil
 	}

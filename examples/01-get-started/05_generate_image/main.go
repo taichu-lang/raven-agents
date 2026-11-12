@@ -21,7 +21,7 @@ func main() {
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
 		ImageGenURL:  fmt.Sprintf("%s/v1/images/generations", os.Getenv("OPENAI_API")),
 		ImageEditURL: fmt.Sprintf("%s/v1/images/edits", os.Getenv("OPENAI_API")),
-		Catalog:      &underlying.Catalog{ID: "gpt-image-2"},
+		Catalog:      &underlying.Catalog{ID: "gpt-image-2.5-flare"},
 	})
 
 	dir, err := os.MkdirTemp("", "raven-image-")
@@ -34,8 +34,8 @@ func main() {
 	// Text-to-image, streaming progressive previews while the image renders.
 	generated, err := generate(ctx, provider, dir, "generated.png", &underlying.ImageRequest{
 		Prompt:        "A red panda sipping tea on a mountain cliff at dawn",
-		Size:          underlying.ImageSizeLandscape,
-		Quality:       underlying.ImageQualityHigh,
+		Size:          underlying.ImageSizeSquare,
+		Quality:       underlying.ImageQualityMedium,
 		Format:        underlying.ImageFormatPNG,
 		PartialImages: 2,
 	})

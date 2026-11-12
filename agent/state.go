@@ -6,45 +6,42 @@ import (
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
-	"github.com/taichu-lang/raven-agents/tool"
 )
 
 // AgentState represents the shared state of the agent, which can be accessed and modified by all nodes in the
 // graph. Fields in this struct are intended to be persistent, and can be resumed after a restart of the agent.
 type AgentState struct {
-	Messages []*underlying.Message
-
-	// Tools is the list of active tools in each turn.
-	Tools []tool.FuncTool
-
 	// ToolCalls is the list of tools returned from llm, and to be called from agent.
 	ToolCalls []*underlying.ToolCallContent
 
-	// ToolSearches is the list of tool searches returned from llm. They are executed before the
-	// tool calls of the same iteration and their results are check-pointed right away, so they
-	// never enter the persisted turn state: a paused turn has no unanswered search.
+	// ToolSearches is the list of tool searches returned from llm. They are executed before the tool calls of
+	// the same iteration and their results are check-pointed right away, so they never enter the persisted turn
+	// state: a paused turn has no unanswered search.
 	ToolSearches []*underlying.ToolSearchCallContent
 
 	// Pending is the list of actions waiting for human approval.
 	Pending []*underlying.ToolCallContent
 
-	// Skills holds the names of the skills the caller selected for this turn. beforeUserInput turns
-	// each selection into a Skill tool call and its tool result, so the instructions live in
-	// Messages like any other conversation content; only the names are kept here, as the state must
-	// stay light and the names drive the activation of skill-owned tools.
+	// Skills holds the names of the skills the caller selected for this turn. beforeUserInput turns each
+	// selection into a Skill tool call and its tool result, so the instructions live in Messages like any other
+	// conversation content; only the names are kept here, as the state must stay light and the names drive the
+	// activation of skill-owned tools.
 	Skills []string
 
-	// Activated holds the names of the skills the model pulled in itself, through the skill tool.
-	// Their instructions already live in Messages as a tool result, so these names are tracked
-	// for the activation of skill-owned tools, not to inject anything.
+	// Activated holds the names of the skills the model pulled in itself, through the skill tool. Their
+	// instructions already live in Messages as a tool result, so these names are tracked for the activation of
+	// skill-owned tools, not to inject anything.
 	Activated []string
+
+	// Compactions records the number of compactions performed in this turn.
+	Compactions int64
 
 	persistent.TurnContext
 }
 
 func (s *AgentState) resetPerTurn() {
-	// Both selections last for one turn: the caller restates its own with every Run, and what the
-	// model pulled in has already reached it as a tool result.
+	// Both selections last for one turn: the caller restates its own with every Run, and what the model pulled
+	// in has already reached it as a tool result.
 	s.Skills = s.Skills[:0]
 	s.Activated = s.Activated[:0]
 	s.ToolCalls = s.ToolCalls[:0]
@@ -54,6 +51,7 @@ func (s *AgentState) resetPerTurn() {
 	s.TokenUsage = 0
 	s.TokenCost = 0
 	s.StartedAt = time.Now()
+	s.Compactions = 0
 }
 
 // activateSkill records a skill the model pulled in, ignoring one that is already recorded.
@@ -94,10 +92,6 @@ const (
 type Budget struct {
 	// MaxIterations is the maximum number of loop iterations in each turn, to prevent infinite loops.
 	MaxIterations int64
-
-	// MaxContextTokens is the maximum number of tokens in the context window, used to trigger context
-	// compaction.
-	MaxContextTokens int64
 
 	// MaxDuration is the maximum duration of the agent execution, in seconds, to prevent long-running.
 	MaxDuration int64

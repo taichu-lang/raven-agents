@@ -19,6 +19,10 @@ var ErrNilContext = errors.New("persistent: turn context is nil")
 // ErrTurnNotFound is returned when an update matches no turn row.
 var ErrTurnNotFound = errors.New("persistent: turn not found")
 
+// ErrMessageNotFound is returned when a lookup by message id matches no message row, ex: the anchor
+// message of a compaction summary that no longer exists.
+var ErrMessageNotFound = errors.New("persistent: message not found")
+
 type StoreRef struct {
 	db     *bun.DB
 	logger *slog.Logger
@@ -56,14 +60,14 @@ func (s *StoreRef) AddTurn(
 	ctx context.Context,
 	turnContext *TurnContext,
 	userMessageID string,
-) (*TurnModel, error) {
+) (*database.TurnModel, error) {
 	if turnContext == nil {
 		return nil, errors.New("turn context is nil")
 	}
 
 	var err error
 	for attempt := 0; attempt < addTurnMaxAttempts; attempt++ {
-		var turn *TurnModel
+		var turn *database.TurnModel
 		turn, err = s.insertNextTurn(ctx, turnContext.ConversationID, userMessageID)
 		if err == nil {
 			turnContext.TurnSeq = turn.TurnSeq
@@ -83,12 +87,12 @@ func (s *StoreRef) insertNextTurn(
 	ctx context.Context,
 	conversationID string,
 	userMessageID string,
-) (*TurnModel, error) {
+) (*database.TurnModel, error) {
 	now := time.Now().Unix()
-	turn := &TurnModel{
+	turn := &database.TurnModel{
 		ConversationID: conversationID,
 		UserMessageID:  userMessageID,
-		Status:         TurnStatusRunning,
+		Status:         database.TurnStatusRunning,
 		PendingTools:   json.RawMessage(`[]`),
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -137,7 +141,7 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 		return fmt.Errorf("encode pending tools: %w", err)
 	}
 
-	turn := &TurnModel{
+	turn := &database.TurnModel{
 		Status:       turnContext.Status,
 		Iterations:   turnContext.Iterations,
 		TokensUsed:   turnContext.TokenUsage,
@@ -172,8 +176,8 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 
 // LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil when the
 // conversation has no turn yet.
-func (s *StoreRef) LoadLatestTurn(ctx context.Context, conversationID string) (*TurnModel, error) {
-	turn := new(TurnModel)
+func (s *StoreRef) LoadLatestTurn(ctx context.Context, conversationID string) (*database.TurnModel, error) {
+	turn := new(database.TurnModel)
 	if err := s.db.NewSelect().
 		Model(turn).
 		Where("conversation_id = ?", conversationID).
@@ -243,6 +247,92 @@ func (s *StoreRef) LoadMessages(ctx context.Context, conversationID string) ([]*
 	}
 
 	return database.FromMessageRows(rows)
+}
+
+// LoadMessagesAfter returns the messages of a conversation stored after the given message id, in stored
+// order. An empty afterMessageID behaves like LoadMessages; an unknown one fails with
+// ErrMessageNotFound so the caller can fall back instead of silently restoring an empty view.
+func (s *StoreRef) LoadMessagesAfter(
+	ctx context.Context,
+	conversationID string,
+	afterMessageID string,
+) ([]*underlying.Message, error) {
+	anchor := new(database.MessageModel)
+	if err := s.db.NewSelect().
+		Model(anchor).
+		Column("id").
+		Where("conversation_id = ?", conversationID).
+		Where("message_id = ?", afterMessageID).
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return nil, fmt.Errorf("load messages of conversation %s after %s: %w",
+				conversationID, afterMessageID, ErrMessageNotFound)
+		}
+
+		return nil, fmt.Errorf("load messages of conversation %s after %s: %w",
+			conversationID, afterMessageID, err)
+	}
+
+	rows := make([]database.MessageModel, 0)
+	if err := s.db.NewSelect().
+		Model(&rows).
+		Where("conversation_id = ?", conversationID).
+		Where("id > ?", anchor.ID).
+		Order("id").
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return []*underlying.Message{}, nil
+		}
+
+		return nil, fmt.Errorf("load messages of conversation %s after %s: %w",
+			conversationID, afterMessageID, err)
+	}
+
+	return database.FromMessageRows(rows)
+}
+
+// StoreSummary persists the compaction summary produced by a conversation turn, filling the
+// conversation attributes from the turn context as StoreMessages does.
+func (s *StoreRef) StoreSummary(ctx context.Context, turnContext *TurnContext, summary *SummaryModel) error {
+	if turnContext == nil {
+		return errors.New("turn context is nil")
+	}
+
+	summary.ConversationID = turnContext.ConversationID
+	summary.TurnSeq = turnContext.TurnSeq
+	summary.CreatedAt = time.Now().Unix()
+
+	if _, err := s.db.NewInsert().Model(summary).Exec(ctx); err != nil {
+		return fmt.Errorf("store summary of conversation %s: %w", turnContext.ConversationID, err)
+	}
+
+	s.logger.DebugContext(ctx, "stored summary",
+		"conversation_id", turnContext.ConversationID,
+		"turn", turnContext.TurnSeq,
+		"covers_from", summary.CoversFromMessageID,
+		"covers_to", summary.CoversToMessageID,
+	)
+
+	return nil
+}
+
+// LoadLatestSummary returns the newest compaction summary of the conversation, or nil when none.
+func (s *StoreRef) LoadLatestSummary(ctx context.Context, conversationID string) (*SummaryModel, error) {
+	summary := new(SummaryModel)
+	if err := s.db.NewSelect().
+		Model(summary).
+		Where("conversation_id = ?", conversationID).
+		Order("id DESC").
+		Limit(1).
+		Scan(ctx); err != nil {
+		if database.IsNoRows(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return summary, nil
 }
 
 func buildMessageRows(

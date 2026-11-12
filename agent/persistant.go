@@ -17,12 +17,12 @@ type Repository interface {
 		ctx context.Context,
 		turnContext *persistent.TurnContext,
 		userMessageID string,
-	) (*persistent.TurnModel, error)
+	) (*database.TurnModel, error)
 
 	UpdateTurn(ctx context.Context, turnContext *persistent.TurnContext) error
 
 	// LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil if none.
-	LoadLatestTurn(ctx context.Context, conversationID string) (*persistent.TurnModel, error)
+	LoadLatestTurn(ctx context.Context, conversationID string) (*database.TurnModel, error)
 
 	// StoreMessages persists the messages produced by a single conversation turn. Scope carries the
 	// conversation attributes that an underlying.Message does not know about.
@@ -33,6 +33,26 @@ type Repository interface {
 	) error
 
 	LoadMessages(ctx context.Context, conversationID string) ([]*underlying.Message, error)
+
+	// LoadMessagesAfter returns the messages stored after the given message id, used to rebuild the
+	// compacted view from a summary's coverage anchor. An empty afterMessageID behaves like
+	// LoadMessages.
+	LoadMessagesAfter(
+		ctx context.Context,
+		conversationID string,
+		afterMessageID string,
+	) ([]*underlying.Message, error)
+
+	// StoreSummary persists one compaction summary; the originals it covers stay untouched in the
+	// messages table.
+	StoreSummary(
+		ctx context.Context,
+		turnContext *persistent.TurnContext,
+		summary *persistent.SummaryModel,
+	) error
+
+	// LoadLatestSummary returns the newest compaction summary of the conversation, or nil when none.
+	LoadLatestSummary(ctx context.Context, conversationID string) (*persistent.SummaryModel, error)
 
 	// Close releases the underlying database connections.
 	Close() error

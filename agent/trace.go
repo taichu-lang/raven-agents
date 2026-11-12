@@ -31,6 +31,10 @@ type TraceSubscriber struct {
 	// llm.complete (or llm.error).
 	llmSpan trace.Span
 
+	// span of the compaction inside the current iteration; open between compact.start and
+	// compact.end.
+	compactSpan trace.Span
+
 	// provider and model of the current turn, captured on turn.start and forwarded to each
 	// llm span.
 	provider string
@@ -84,6 +88,7 @@ func (s *TraceSubscriber) OnEvent(e *event.Event) {
 	case event.EventIterationEnd:
 		s.endPendingToolSpans()
 		s.endLLMSpan()
+		s.endCompactSpan()
 		s.iterationSpan.End()
 		s.iterationSpan = nil
 		s.iterationCtx = nil
@@ -106,13 +111,19 @@ func (s *TraceSubscriber) OnEvent(e *event.Event) {
 
 	case event.EventToolResult:
 		s.onToolResult(e.Payload.(*underlying.Message))
+
+	case event.EventCompactStart:
+		s.onCompactStart(e.Payload.(*event.CompactPayload))
+
+	case event.EventCompactEnd:
+		s.onCompactEnd(e.Payload.(*event.CompactPayload))
 	}
 }
 
 func (s *TraceSubscriber) onTurnStart(turn *event.TurnStartPayload) {
 	s.turnCtx, s.turnSpan = s.tracer.Start(
 		s.agentCtx,
-		fmt.Sprintf("turn.#%d", turn.Turn),
+		fmt.Sprintf("turn.#%d", turn.TurnSeq),
 	)
 	s.turnSpan.SetAttributes(
 		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindAgent),
@@ -259,6 +270,43 @@ func (s *TraceSubscriber) onToolResult(message *underlying.Message) {
 		}
 		span.End()
 	}
+}
+
+// onCompactStart opens the compaction span as a child of the current iteration: compaction runs
+// between the tool invocation and the LLM call of the iteration (Stage 3: Context Build).
+func (s *TraceSubscriber) onCompactStart(payload *event.CompactPayload) {
+	_, s.compactSpan = s.tracer.Start(s.iterationCtx, "compact")
+	s.compactSpan.SetAttributes(
+		attribute.String(observability.OpenInferenceSpanKind, observability.SpanKindChain),
+		attribute.Int64(observability.CompactProjectedTokens, int64(payload.Projected)),
+		attribute.Int64(observability.CompactThreshold, int64(payload.Threshold)),
+	)
+}
+
+func (s *TraceSubscriber) onCompactEnd(payload *event.CompactPayload) {
+	if s.compactSpan == nil {
+		return
+	}
+
+	s.compactSpan.SetAttributes(
+		attribute.Int64(observability.CompactDroppedMessages, int64(payload.DroppedMessages)),
+		attribute.Int64(observability.CompactKeptMessages, int64(payload.KeptMessages)),
+		attribute.Int64(observability.CompactSummaryTokens, payload.SummaryTokens),
+	)
+	s.compactSpan.End()
+	s.compactSpan = nil
+}
+
+// endCompactSpan closes the compact span if it is still open, so that it does not outlive its
+// iteration.
+func (s *TraceSubscriber) endCompactSpan() {
+	if s.compactSpan == nil {
+		return
+	}
+
+	s.compactSpan.SetStatus(codes.Error, "compact span ended without completion")
+	s.compactSpan.End()
+	s.compactSpan = nil
 }
 
 // endPendingToolSpans closes the tool spans that never received a result, so that they do not

@@ -13,3 +13,20 @@ CREATE TABLE IF NOT EXISTS messages (
 --bun:split
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_turn ON messages (conversation_id, turn_seq);
+
+--bun:split
+
+CREATE TABLE IF NOT EXISTS message_summaries (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id         VARCHAR(64)  NOT NULL,
+    turn_seq                BIGINT       NOT NULL DEFAULT 0,
+    covers_from_message_id  VARCHAR(128) NOT NULL,
+    covers_to_message_id    VARCHAR(128) NOT NULL,
+    summary                 TEXT         NOT NULL DEFAULT '',
+    tokens                  BIGINT       NOT NULL DEFAULT 0,
+    created_at              BIGINT       NOT NULL DEFAULT 0
+);
+
+--bun:split
+
+CREATE INDEX IF NOT EXISTS idx_message_summaries_conversation ON message_summaries (conversation_id, id);

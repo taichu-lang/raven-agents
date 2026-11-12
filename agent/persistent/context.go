@@ -2,17 +2,8 @@ package persistent
 
 import (
 	"time"
-)
 
-type TurnStatus string
-
-const (
-	TurnStatusIdle            TurnStatus = "idle"
-	TurnStatusRunning         TurnStatus = "running"
-	TurnStatusDone            TurnStatus = "done"
-	TurnStatusFailed          TurnStatus = "failed"
-	TurnStatusWaitingApproval TurnStatus = "waiting_approval"
-	TurnStatusInterrupted     TurnStatus = "interrupted"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 )
 
 type TurnContext struct {
@@ -29,7 +20,7 @@ type TurnContext struct {
 
 	// TurnSeq is assigned after turn started.
 	TurnSeq int64
-	Status  TurnStatus
+	Status  database.TurnStatus
 
 	// PendingTools is the IDs of the tool calls waiting for the user's response.
 	PendingTools []string
