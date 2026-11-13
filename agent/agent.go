@@ -70,11 +70,7 @@ type Agent struct {
 	mq             event.Bus
 	contextManager *ContextManager
 
-	// subscription feeds the tracer goroutine; tracerDone is closed once that goroutine has drained
-	// the subscription channel and returned.
-	subscription *event.Subscription
-	tracerDone   chan struct{}
-	tracer       *TraceSubscriber
+	tracer *TraceSubscriber
 }
 
 func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agent {
@@ -135,15 +131,8 @@ func (a *Agent) init(options *AgentOptions) {
 
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
-	a.tracer = NewTraceSubscriber(options.Name, options.UserID)
-	a.subscription = a.mq.Subscribe()
-	a.tracerDone = make(chan struct{})
-	go func() {
-		defer close(a.tracerDone)
-		for e := range a.subscription.Channel {
-			a.tracer.OnEvent(e)
-		}
-	}()
+	a.tracer = NewTraceSubscriber(a.mq.Subscribe(), options.Name, options.UserID)
+	a.tracer.Start()
 }
 
 func (a *Agent) addBuiltinTools() {
@@ -171,18 +160,11 @@ func (a *Agent) addBuiltinTools() {
 	})
 }
 
-// Shutdown unsubscribes from the event bus and waits for the tracer goroutine to consume the events
-// still buffered in the subscription channel before closing the sandbox and the store.
+// Shutdown unsubscribes the tracer from the event bus and waits for it to consume the events still buffered in
+// the subscription channel before closing the sandbox and the store.
 func (a *Agent) Shutdown(ctx context.Context) error {
-	defer a.tracer.Close()
-	if err := a.mq.Unsubscribe(a.subscription.ID); err != nil {
-		return err
-	}
-
-	select {
-	case <-a.tracerDone:
-	case <-ctx.Done():
-		return ctx.Err()
+	if err := a.tracer.Close(a.mq); err != nil {
+		slog.Warn("failed to close tracer", "err", err)
 	}
 
 	// The agent owns the sandbox instance, so it is closed here; the provider belongs to the caller and
@@ -266,7 +248,7 @@ func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultConte
 		ConversationID: a.State.ConversationID,
 		TurnSeq:        a.State.TurnSeq,
 		Model:          a.State.Model,
-		Provider:       "openai",
+		Provider:       a.contextManager.catalog.Provider,
 		Messages:       []*underlying.Message{message},
 	})
 	defer func() {

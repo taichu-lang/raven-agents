@@ -17,6 +17,11 @@ type TraceSubscriber struct {
 	userID string
 	tracer trace.Tracer
 
+	// subscription feeds the tracer goroutine; done is closed once that goroutine has drained the subscription
+	// channel and returned.
+	subscription *event.Subscription
+	done         chan struct{}
+
 	agentCtx  context.Context
 	agentSpan trace.Span
 
@@ -46,7 +51,7 @@ type TraceSubscriber struct {
 	toolSpans map[string]trace.Span
 }
 
-func NewTraceSubscriber(root string, userID string) *TraceSubscriber {
+func NewTraceSubscriber(subscription *event.Subscription, root string, userID string) *TraceSubscriber {
 	tp := otel.GetTracerProvider()
 	if tp == nil {
 		panic("Invoke NewTracerProvider first")
@@ -60,16 +65,34 @@ func NewTraceSubscriber(root string, userID string) *TraceSubscriber {
 	)
 
 	return &TraceSubscriber{
-		userID:    userID,
-		tracer:    tracer,
-		agentCtx:  agentCtx,
-		agentSpan: agentSpan,
-		toolSpans: make(map[string]trace.Span),
+		subscription: subscription,
+		userID:       userID,
+		tracer:       tracer,
+		agentCtx:     agentCtx,
+		agentSpan:    agentSpan,
+		toolSpans:    make(map[string]trace.Span),
 	}
 }
 
-func (s *TraceSubscriber) Close() {
+// Start subscribes to the event bus synchronously, so that no event emitted afterwards is missed, and
+// consumes the events in the background until Close unsubscribes and the channel is drained.
+func (s *TraceSubscriber) Start() {
+	s.done = make(chan struct{})
+	go func() {
+		defer close(s.done)
+		for e := range s.subscription.Channel {
+			s.OnEvent(e)
+		}
+	}()
+}
+
+// Close unsubscribes from the event bus, so that no further events are delivered to the tracer. The events
+// already buffered in the subscription channel remain consumable.
+func (s *TraceSubscriber) Close(mq event.Bus) error {
+	err := mq.Unsubscribe(s.subscription.ID)
+	<-s.done
 	s.agentSpan.End()
+	return err
 }
 
 func (s *TraceSubscriber) OnEvent(e *event.Event) {

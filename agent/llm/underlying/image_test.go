@@ -2,7 +2,6 @@ package underlying
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 )
@@ -190,36 +189,4 @@ func (s *stubImageGenerator) GenerateImageStream(
 	_ *ImageRequest,
 ) (ImageStream, error) {
 	return s.stream, nil
-}
-
-func TestGenerateImageCollectsTerminalChunk(t *testing.T) {
-	result := &ImageResult{Images: []*ImageSource{NewImageSourceBytes(MediaTypeImagePNG, []byte("png"))}}
-	generator := &stubImageGenerator{stream: func(yield func(*ImageChunk, error) bool) {
-		if !yield(&ImageChunk{Index: 0, PartialImage: result.Images[0]}, nil) {
-			return
-		}
-		yield(&ImageChunk{Result: result}, nil)
-	}}
-
-	collected, err := GenerateImage(context.Background(), generator, &ImageRequest{Prompt: "a cat"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(collected.Images) != 1 {
-		t.Fatalf("expected 1 image, got %+v", collected)
-	}
-
-	broken := &stubImageGenerator{stream: func(yield func(*ImageChunk, error) bool) {
-		yield(nil, errors.New("boom"))
-	}}
-	if _, err := GenerateImage(context.Background(), broken, &ImageRequest{Prompt: "a cat"}); err == nil {
-		t.Fatal("expected the stream error to surface")
-	}
-
-	empty := &stubImageGenerator{stream: func(yield func(*ImageChunk, error) bool) {
-		yield(&ImageChunk{}, nil)
-	}}
-	if _, err := GenerateImage(context.Background(), empty, &ImageRequest{Prompt: "a cat"}); err == nil {
-		t.Fatal("expected a missing terminal chunk error")
-	}
 }

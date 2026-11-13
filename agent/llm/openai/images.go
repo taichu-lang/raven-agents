@@ -58,14 +58,88 @@ func (p *Provider) GenerateImageStream(
 	ctx context.Context,
 	req *underlying.ImageRequest,
 ) (underlying.ImageStream, error) {
-	size, err := resolveImageRequest(req)
+	resp, edit, err := p.sendImageRequest(ctx, req, true)
 	if err != nil {
 		return nil, err
 	}
 
-	body, edit, err := p.buildImageRequestBody(req, size)
+	if edit {
+		return p.streamEdits(resp, req.Format), nil
+	}
+
+	return p.streamGenerations(resp, req.Format), nil
+}
+
+// GenerateImage generates or edits images via the images api with a blocking (non-streaming) request: the
+// response is a single JSON document holding every image. req.PartialImages is ignored because previews only
+// exist in streaming mode.
+func (p *Provider) GenerateImage(
+	ctx context.Context,
+	req *underlying.ImageRequest,
+) (*underlying.ImageResult, error) {
+	resp, _, err := p.sendImageRequest(ctx, req, false)
 	if err != nil {
 		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var response openai.ImagesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("decode image generation response: %w", err)
+	}
+
+	result := &underlying.ImageResult{Images: make([]*underlying.ImageSource, 0, len(response.Data))}
+	for _, item := range response.Data {
+		if item.B64JSON == "" {
+			if item.URL != "" {
+				result.Images = append(result.Images, &underlying.ImageSource{
+					MediaType: mediaTypeFromFormat(string(response.OutputFormat)),
+					URI:       item.URL,
+				})
+			}
+
+			continue
+		}
+
+		image, err := decodeImage(item.B64JSON, string(response.OutputFormat), req.Format)
+		if err != nil {
+			return nil, err
+		}
+
+		result.Images = append(result.Images, image)
+	}
+
+	if len(result.Images) == 0 {
+		return nil, errors.New("image generation response contains no image")
+	}
+
+	if response.Usage.TotalTokens > 0 {
+		result.Usage = &underlying.UsageContent{
+			Input:  response.Usage.InputTokens,
+			Output: response.Usage.OutputTokens,
+			Total:  response.Usage.TotalTokens,
+		}
+	}
+
+	return result, nil
+}
+
+// sendImageRequest validates the request, posts it to the generations or edits endpoint, and returns the
+// response with a 200 status; the caller owns closing the body. The bool reports whether the edits endpoint
+// was used.
+func (p *Provider) sendImageRequest(
+	ctx context.Context,
+	req *underlying.ImageRequest,
+	stream bool,
+) (*http.Response, bool, error) {
+	size, err := resolveImageRequest(req)
+	if err != nil {
+		return nil, false, err
+	}
+
+	body, edit, err := p.buildImageRequestBody(req, size, stream)
+	if err != nil {
+		return nil, false, err
 	}
 
 	url := p.options.ImageGenURL
@@ -75,12 +149,16 @@ func (p *Provider) GenerateImageStream(
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+p.options.ApiKey)
-	request.Header.Set("Accept", "text/event-stream")
+	if stream {
+		request.Header.Set("Accept", "text/event-stream")
+	} else {
+		request.Header.Set("Accept", "application/json")
+	}
 
 	p.logger.Debug(
 		"request body of image generation",
@@ -93,7 +171,7 @@ func (p *Provider) GenerateImageStream(
 	resp, err := p.client.Do(request)
 	if err != nil {
 		p.logger.Error("failed to send image generation request", "err", err)
-		return nil, err
+		return nil, false, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -106,14 +184,10 @@ func (p *Provider) GenerateImageStream(
 			"err",
 			string(text),
 		)
-		return nil, errors.New(string(text))
+		return nil, false, errors.New(string(text))
 	}
 
-	if edit {
-		return p.streamEdits(resp, req.Format), nil
-	}
-
-	return p.streamGenerations(resp, req.Format), nil
+	return resp, edit, nil
 }
 
 // buildImageRequestBody assembles the wire body and reports whether the edits
@@ -121,7 +195,13 @@ func (p *Provider) GenerateImageStream(
 func (p *Provider) buildImageRequestBody(
 	req *underlying.ImageRequest,
 	size string,
+	stream bool,
 ) ([]byte, bool, error) {
+	partialImages := 0
+	if stream {
+		partialImages = req.PartialImages
+	}
+
 	base := imageBaseRequest{
 		Model:         p.options.Catalog.ID,
 		Prompt:        req.Prompt,
@@ -131,8 +211,8 @@ func (p *Provider) buildImageRequestBody(
 		Background:    string(req.Background),
 		OutputFormat:  string(req.Format),
 		Moderation:    req.Moderation,
-		Stream:        true,
-		PartialImages: req.PartialImages,
+		Stream:        stream,
+		PartialImages: partialImages,
 	}
 
 	edit := len(req.Images) > 0

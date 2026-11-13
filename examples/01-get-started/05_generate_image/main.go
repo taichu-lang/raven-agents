@@ -88,28 +88,10 @@ func generate(
 	name string,
 	req *underlying.ImageRequest,
 ) (*underlying.ImageResult, error) {
-	stream, err := provider.GenerateImageStream(ctx, req)
+
+	result, err := provider.GenerateImage(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-
-	var result *underlying.ImageResult
-	for chunk, err := range stream {
-		if err != nil {
-			return nil, err
-		}
-
-		if chunk.PartialImage != nil {
-			slog.Debug("partial preview", "index", chunk.Index, "bytes", len(chunk.PartialImage.Data))
-			path := filepath.Join(dir, fmt.Sprintf("partial-%d.png", chunk.Index))
-			if err := os.WriteFile(path, chunk.PartialImage.Data, 0o600); err != nil {
-				return nil, err
-			}
-		}
-
-		if chunk.Result != nil {
-			result = chunk.Result
-		}
 	}
 
 	if result == nil {

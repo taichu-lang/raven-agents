@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/pkg/database"
@@ -92,7 +91,7 @@ func (s *ChatService) genConversationTitle(
 	ctx context.Context,
 	c *conversation.ConversationModel,
 	text string,
-	catalog *configs.ModelCatalog,
+	catalog *underlying.Catalog,
 	bus event.Bus,
 ) *TitleGeneration {
 	gen := &TitleGeneration{}
@@ -101,7 +100,7 @@ func (s *ChatService) genConversationTitle(
 		runner := llm.NewRunner(&underlying.ProviderOptions{
 			ApiKey:  s.cfg.ApiKey,
 			TextURL: s.cfg.Endpoint,
-			Catalog: &catalog.Catalog,
+			Catalog: catalog,
 		})
 
 		var prompt bytes.Buffer

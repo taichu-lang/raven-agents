@@ -32,7 +32,7 @@ type ChatService struct {
 	skillsDir       string
 	sandboxProvider sandbox.Provider
 	promptTemplate  *template.Template
-	models          map[string]configs.ModelCatalog
+	models          map[string]*underlying.Catalog
 }
 
 func NewChatService(
@@ -45,9 +45,9 @@ func NewChatService(
 		panic(err)
 	}
 
-	models := make(map[string]configs.ModelCatalog)
+	models := make(map[string]*underlying.Catalog)
 	for _, catalog := range catalogs {
-		models[catalog.ID] = catalog
+		models[catalog.ID] = &catalog
 	}
 
 	return &ChatService{
@@ -99,7 +99,7 @@ func (s *ChatService) Chat(
 	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
 
-	titleGen := s.genConversationTitle(ctx, c, req.Text, &catalog, bus)
+	titleGen := s.genConversationTitle(ctx, c, req.Text, catalog, bus)
 	options := &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         strconv.FormatInt(userID, 10),
@@ -109,7 +109,7 @@ func (s *ChatService) Chat(
 			ApiKey:       s.cfg.ApiKey,
 			TextURL:      s.cfg.Endpoint,
 			Instructions: s.cfg.Instructions,
-			Catalog:      &catalog.Catalog,
+			Catalog:      catalog,
 		},
 		SkillDirs:       []string{s.skillsDir},
 		SandboxProvider: s.sandboxProvider,

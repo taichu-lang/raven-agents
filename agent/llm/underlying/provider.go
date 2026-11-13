@@ -135,31 +135,5 @@ type ImageStream = iter.Seq2[*ImageChunk, error]
 // is a synchronous call outside the chat stream. Editing is the same call with ImageRequest.Images non-empty.
 type ImageGenerator interface {
 	GenerateImageStream(ctx context.Context, req *ImageRequest) (ImageStream, error)
-}
-
-// GenerateImage is the non-streaming convenience wrapper around ImageGenerator: it consumes the stream and
-// returns the terminal result. Use GenerateImageStream directly when progressive previews matter (ex:
-// user-facing rendering).
-func GenerateImage(ctx context.Context, g ImageGenerator, req *ImageRequest) (*ImageResult, error) {
-	stream, err := g.GenerateImageStream(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	var result *ImageResult
-	for chunk, err := range stream {
-		if err != nil {
-			return nil, err
-		}
-
-		if chunk.Result != nil {
-			result = chunk.Result
-		}
-	}
-
-	if result == nil {
-		return nil, errors.New("image generation stream ended without a terminal result")
-	}
-
-	return result, nil
+	GenerateImage(ctx context.Context, req *ImageRequest) (*ImageResult, error)
 }

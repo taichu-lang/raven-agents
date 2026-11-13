@@ -8,19 +8,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
-type Cost struct {
-	Input      float32 `json:"input"       yaml:"input"`
-	Output     float32 `json:"output"      yaml:"output"`
-	CacheRead  float32 `json:"cache_read"  yaml:"cache_read"`
-	CacheWrite float32 `json:"cache_write" yaml:"cache_write"`
-}
-
-type ModelCatalog struct {
-	underlying.Catalog
-	Cost `json:"cost" yaml:"cost"`
-}
-
-type ModelCatalogSlice = []ModelCatalog
+type ModelCatalogSlice = []underlying.Catalog
 
 func LoadModelCatalog() (ModelCatalogSlice, error) {
 	catalog := make(ModelCatalogSlice, 0, 1)

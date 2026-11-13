@@ -123,7 +123,7 @@ func TestBuildImageEditBody(t *testing.T) {
 		Mask:          underlying.NewImageSourceBytes(underlying.MediaTypeImagePNG, []byte("mask")),
 		Size:          underlying.ImageSizeSquare,
 		InputFidelity: "high",
-	}, underlying.ImageSizeSquare)
+	}, underlying.ImageSizeSquare, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,55 +253,6 @@ func TestStreamWithoutImagesErrors(t *testing.T) {
 	}
 }
 
-func TestGenerateImageStreamAgainstServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/images/generations" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(
-			w,
-			"data: {\"type\":\"image_generation.completed\",\"b64_json\":\"ZmluYWw=\",\"output_format\":\"png\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"total_tokens\":3}}\n\n",
-		)
-	}))
-	defer server.Close()
-
-	p := &Provider{
-		client: server.Client(),
-		options: &underlying.ProviderOptions{
-			TextURL: server.URL + "/v1/responses",
-			Catalog: &underlying.Catalog{ID: "gpt-image-2"},
-		},
-		logger: slog.Default().With("llm", "openai"),
-	}
-
-	result, err := underlying.GenerateImage(
-		context.Background(),
-		p,
-		&underlying.ImageRequest{Prompt: "a cat"},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Images) != 1 || string(result.Images[0].Data) != "final" {
-		t.Fatalf("unexpected result: %+v", result)
-	}
-
-	errorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":{"message":"size is not supported"}}`)
-	}))
-	defer errorServer.Close()
-
-	p.options.TextURL = errorServer.URL + "/v1/responses"
-	_, err = underlying.GenerateImage(context.Background(), p, &underlying.ImageRequest{Prompt: "a cat"})
-	if err == nil || !strings.Contains(err.Error(), "size is not supported") {
-		t.Fatalf("expected the api error message, got %v", err)
-	}
-}
-
 func TestURIContentFeedsVisionInput(t *testing.T) {
 	items := inputItemsFromMessage(&underlying.Message{
 		Role: underlying.RoleUser,
@@ -321,5 +272,63 @@ func TestURIContentFeedsVisionInput(t *testing.T) {
 
 	if content[1].Type != InputTypeImage || content[1].InputImage.ImageURL != "https://example.com/photo.jpg" {
 		t.Fatalf("the uri image did not reach input_image: %+v", content[1])
+	}
+}
+
+func TestGenerateImageBlockingAgainstServer(t *testing.T) {
+	var requestBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/generations" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(
+			w,
+			`{"created":1,"output_format":"jpeg","data":[{"b64_json":"ZmluYWw="}],`+
+				`"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`,
+		)
+	}))
+	defer server.Close()
+
+	p := &Provider{
+		client: server.Client(),
+		options: &underlying.ProviderOptions{
+			ImageGenURL: server.URL + "/v1/images/generations",
+			Catalog:     &underlying.Catalog{ID: "gpt-image-2"},
+		},
+		logger: slog.Default().With("llm", "openai"),
+	}
+
+	result, err := p.GenerateImage(
+		context.Background(),
+		&underlying.ImageRequest{Prompt: "a cat", PartialImages: 2},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if requestBody["stream"] != false {
+		t.Fatalf("blocking request must send stream=false, got %v", requestBody["stream"])
+	}
+
+	if _, ok := requestBody["partial_images"]; ok {
+		t.Fatal("partial_images must be omitted for blocking requests")
+	}
+
+	if len(result.Images) != 1 || string(result.Images[0].Data) != "final" ||
+		result.Images[0].MediaType != underlying.MediaTypeImageJPG {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+
+	if result.Usage == nil || result.Usage.Total != 3 {
+		t.Fatalf("unexpected usage: %+v", result.Usage)
 	}
 }
