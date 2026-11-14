@@ -14,11 +14,10 @@ type Prompt struct {
 }
 
 type Config struct {
-	ApiKey       string                `yaml:"api_key"`
-	Endpoint     string                `yaml:"endpoint"`
 	Instructions string                `yaml:"instructions"`
 	DefaultModel string                `yaml:"default_model"`
 	Store        *database.StoreConfig `yaml:"store"`
+	Providers    []ModelProvider       `yaml:"providers"`
 
 	// TODO(Leo): resolved from runtime?
 	AppDir string `yaml:"app_dir"`

@@ -21,6 +21,8 @@ type Provider struct {
 	logger  *slog.Logger
 }
 
+var _ underlying.Provider = (*Provider)(nil)
+
 func NewProvider(options *underlying.ProviderOptions) *Provider {
 	return &Provider{
 		client:  util.StreamClient,
@@ -29,13 +31,21 @@ func NewProvider(options *underlying.ProviderOptions) *Provider {
 	}
 }
 
-func (p *Provider) Gen(
+func (p *Provider) modelID() string {
+	if p.options.Alias != "" {
+		return p.options.Alias
+	}
+
+	return p.options.Catalog.ID
+}
+
+func (p *Provider) GenText(
 	ctx context.Context,
 	messages []*underlying.Message,
 	options *underlying.GenOptions,
 ) underlying.ResponseStream {
 	return func(yield func(*underlying.ResponseChunk, error) bool) {
-		model := p.options.Catalog.ID
+		model := p.modelID()
 		opts := underlying.WithDefaultOptions(options)
 		params := p.newResponsesParams(model, messages, opts)
 		body, err := json.Marshal(params)
@@ -55,7 +65,7 @@ func (p *Provider) Gen(
 			string(body),
 		)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.TextURL, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.options.ChatURL, bytes.NewReader(body))
 		if err != nil {
 			p.logger.Error("failed to create generation request", "err", err)
 			yield(nil, err)

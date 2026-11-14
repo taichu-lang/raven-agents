@@ -68,7 +68,7 @@ func main() {
 		Name: "middleware-injection",
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("OPENAI_APIKEY"),
-			TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
+			ChatURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 			Instructions: "You are a helpful assistant!",
 			Catalog: &underlying.Catalog{
 				ID: "gpt-4.1",

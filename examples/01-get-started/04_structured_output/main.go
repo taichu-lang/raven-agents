@@ -22,7 +22,7 @@ func main() {
 
 	model := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:       os.Getenv("OPENAI_APIKEY"),
-		TextURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
+		ChatURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 		Instructions: "Extract entities from the input text",
 		Catalog: &underlying.Catalog{
 			ID: "gpt-6-astra",

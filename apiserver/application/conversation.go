@@ -91,16 +91,19 @@ func (s *ChatService) genConversationTitle(
 	ctx context.Context,
 	c *conversation.ConversationModel,
 	text string,
-	catalog *underlying.Catalog,
+	model string,
 	bus event.Bus,
 ) *TitleGeneration {
 	gen := &TitleGeneration{}
+	provider, catalog := s.getModelProvider(model)
+
 	if c.Title == "" {
 		gen.done.Add(1)
 		runner := llm.NewRunner(&underlying.ProviderOptions{
-			ApiKey:  s.cfg.ApiKey,
-			TextURL: s.cfg.Endpoint,
+			ApiKey:  provider.ApiKey,
+			ChatURL: provider.ChatURL,
 			Catalog: catalog,
+			Alias:   provider.GetAlias(model),
 		})
 
 		var prompt bytes.Buffer

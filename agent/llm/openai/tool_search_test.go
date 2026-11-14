@@ -39,7 +39,7 @@ func newTestFuncTool[In any](t *testing.T, name, description string) tool.FuncTo
 func TestToolSearchRenderedAsNativeTool(t *testing.T) {
 	p := &Provider{
 		options: &underlying.ProviderOptions{
-			TextURL: "https://example.invalid",
+			ChatURL: "https://example.invalid",
 			Catalog: &underlying.Catalog{
 				ID: "gpt-4.1",
 			},
@@ -106,7 +106,7 @@ func TestToolSearchRenderedAsNativeTool(t *testing.T) {
 func TestToolSearchCallAndOutputTravelAsTopLevelItems(t *testing.T) {
 	p := &Provider{
 		options: &underlying.ProviderOptions{
-			TextURL: "https://example.invalid",
+			ChatURL: "https://example.invalid",
 			Catalog: &underlying.Catalog{
 				ID: "gpt-4.1",
 			},

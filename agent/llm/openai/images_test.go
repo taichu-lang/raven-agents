@@ -307,7 +307,7 @@ func TestGenerateImageBlockingAgainstServer(t *testing.T) {
 		logger: slog.Default().With("llm", "openai"),
 	}
 
-	result, err := p.GenerateImage(
+	result, err := p.GenImage(
 		context.Background(),
 		&underlying.ImageRequest{Prompt: "a cat", PartialImages: 2},
 	)

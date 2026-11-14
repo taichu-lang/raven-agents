@@ -70,7 +70,7 @@ func (a *Runner) invoke(
 	messages []*underlying.Message,
 	options *underlying.GenOptions,
 ) underlying.ResponseStream {
-	return a.underlying.Gen(ctx, messages, options)
+	return a.underlying.GenText(ctx, messages, options)
 }
 
 func (a *Runner) beforeRun(

@@ -60,7 +60,7 @@ func main() {
 	// message.
 	vision := llm.NewRunner(&underlying.ProviderOptions{
 		ApiKey:  os.Getenv("OPENAI_APIKEY"),
-		TextURL: fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
+		ChatURL: fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
 		Catalog: &underlying.Catalog{ID: "gpt-6-astra"},
 	})
 	feedback := underlying.NewMessage(underlying.RoleUser, append(
@@ -89,7 +89,7 @@ func generate(
 	req *underlying.ImageRequest,
 ) (*underlying.ImageResult, error) {
 
-	result, err := provider.GenerateImage(ctx, req)
+	result, err := provider.GenImage(ctx, req)
 	if err != nil {
 		return nil, err
 	}

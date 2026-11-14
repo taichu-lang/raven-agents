@@ -40,12 +40,14 @@ type ProviderOptions struct {
 	Instructions string   `yaml:"instructions,omitzero" json:"instructions,omitzero"`
 	Catalog      *Catalog `yaml:"catalog"               json:"catalog"`
 
-	// TextURL is used for text generation, ex: https://api.openai.com/v1/responses
-	TextURL string `yaml:"text_url,omitzero"       json:"text_url,omitzero"`
+	// ChatURL is used for text generation, ex: https://api.openai.com/v1/responses
+	ChatURL string `yaml:"chat_url,omitzero"       json:"chat_url,omitzero"`
 	// ImageGenURL is used for image generation, ex: https://api.openai.com/v1/images/generations
 	ImageGenURL string `yaml:"image_gen_url,omitzero"  json:"image_gen_url,omitzero"`
 	// ImageEditURL is used for image editing, ex: https://api.openai.com/v1/images/edits
 	ImageEditURL string `yaml:"image_edit_url,omitzero" json:"image_edit_url,omitzero"`
+	// Alias is the model id used in the backend provider.
+	Alias string `yaml:"alias,omitempty"         json:"alias,omitzero"`
 }
 
 func (p *ProviderOptions) Validate() error {
@@ -71,10 +73,6 @@ type GenOptions struct {
 }
 
 type WithGenOption func(*GenOptions)
-
-type Provider interface {
-	Gen(ctx context.Context, messages []*Message, options *GenOptions) ResponseStream
-}
 
 func WithStream(stream bool) WithGenOption {
 	return func(o *GenOptions) {
@@ -131,9 +129,15 @@ func WithDefaultOptions(options *GenOptions) *GenOptions {
 // always carries Result.
 type ImageStream = iter.Seq2[*ImageChunk, error]
 
-// ImageGenerator is the standalone image generation contract, separate from Provider because image generation
-// is a synchronous call outside the chat stream. Editing is the same call with ImageRequest.Images non-empty.
-type ImageGenerator interface {
-	GenerateImageStream(ctx context.Context, req *ImageRequest) (ImageStream, error)
-	GenerateImage(ctx context.Context, req *ImageRequest) (*ImageResult, error)
+// Provider defines the full set of capabilities a model provider offers:
+// - GenText: input is text/image/file, output is text
+// - GenImageStream: input is text/image, output is image. Streaming
+// - GenImage: input is text/image, output is image. Non-streaming
+//
+// If a provider does not support a capability, it may implement it as e.g. panic("not implemented").
+// Callers should decide based on the model's catalog.
+type Provider interface {
+	GenText(ctx context.Context, messages []*Message, options *GenOptions) ResponseStream
+	GenImageStream(ctx context.Context, req *ImageRequest) (ImageStream, error)
+	GenImage(ctx context.Context, req *ImageRequest) (*ImageResult, error)
 }

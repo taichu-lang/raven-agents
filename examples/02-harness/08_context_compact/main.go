@@ -97,7 +97,7 @@ func newAgent(bus event.Bus, storePath string, conversationID string) *agent.Age
 		ConversationID: conversationID,
 		LLM: &underlying.ProviderOptions{
 			ApiKey:       os.Getenv("RAVEN_APIKEY"),
-			TextURL:      os.Getenv("RAVEN_API"),
+			ChatURL:      os.Getenv("RAVEN_API"),
 			Instructions: "You are a helpful assistant!",
 			Catalog: &underlying.Catalog{
 				ID: "qwen3.8-flash",

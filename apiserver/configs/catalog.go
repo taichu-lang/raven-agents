@@ -8,7 +8,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
-type ModelCatalogSlice = []underlying.Catalog
+type ModelCatalogSlice = []*underlying.Catalog
 
 func LoadModelCatalog() (ModelCatalogSlice, error) {
 	catalog := make(ModelCatalogSlice, 0, 1)

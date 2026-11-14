@@ -47,7 +47,7 @@ func NewChatService(
 
 	models := make(map[string]*underlying.Catalog)
 	for _, catalog := range catalogs {
-		models[catalog.ID] = &catalog
+		models[catalog.ID] = catalog
 	}
 
 	return &ChatService{
@@ -76,9 +76,9 @@ func (s *ChatService) Chat(
 		req.Model = s.cfg.DefaultModel
 	}
 
-	catalog, ok := s.models[req.Model]
-	if !ok {
-		return nil, fmt.Errorf("model %s not found", req.Model)
+	provider, catalog := s.getModelProvider(req.Model)
+	if provider == nil {
+		return nil, fmt.Errorf("model [%s] does not support", req.Model)
 	}
 
 	c, err := s.store.Get(ctx, req.ConversationID)
@@ -99,17 +99,18 @@ func (s *ChatService) Chat(
 	bus := event.NewMemoryBus()
 	subscription := bus.Subscribe()
 
-	titleGen := s.genConversationTitle(ctx, c, req.Text, catalog, bus)
+	titleGen := s.genConversationTitle(ctx, c, req.Text, req.Model, bus)
 	options := &agent.AgentOptions{
 		Name:           fmt.Sprintf("main-#%d", c.ID),
 		UserID:         strconv.FormatInt(userID, 10),
 		ConversationID: req.ConversationID,
 		Store:          s.store.GetUnderlying(),
 		LLM: &underlying.ProviderOptions{
-			ApiKey:       s.cfg.ApiKey,
-			TextURL:      s.cfg.Endpoint,
+			ApiKey:       provider.ApiKey,
+			ChatURL:      provider.ChatURL,
 			Instructions: s.cfg.Instructions,
 			Catalog:      catalog,
+			Alias:        provider.GetAlias(req.Model),
 		},
 		SkillDirs:       []string{s.skillsDir},
 		SandboxProvider: s.sandboxProvider,
@@ -203,4 +204,19 @@ func (s *ChatService) runTurn(
 	}
 
 	return a.Run(ctx, messages)
+}
+
+func (s *ChatService) getModelProvider(model string) (*configs.ModelProvider, *underlying.Catalog) {
+	catalog, ok := s.models[model]
+	if !ok {
+		return nil, nil
+	}
+
+	for _, p := range s.cfg.Providers {
+		if p.Name == catalog.Provider {
+			return &p, catalog
+		}
+	}
+
+	return nil, nil
 }

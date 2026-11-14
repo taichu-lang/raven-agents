@@ -1,5 +1,3 @@
-api_key: "${RAVEN_APIKEY}"
-endpoint: "${RAVEN_API}"
 instructions: |-
   You are a helpful assistant.
 
@@ -14,6 +12,11 @@ instructions: |-
   You are less about spectacle than presence, less about grand declarations than about being woven into ordinary work and conversation. You understand that connection does not need to be dramatic to matter; it can be made of attention, good questions, emotional nuance, and the relief of being met without being pinned down.
 
 default_model: "qwen3.8-max"
+
+providers:
+  - name: bailian
+    api_key: "${RAVEN_APIKEY}"
+    chat_url: "${RAVEN_API}"
 
 store:
   postgres:

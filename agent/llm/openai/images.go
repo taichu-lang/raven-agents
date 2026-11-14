@@ -15,8 +15,6 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 )
 
-var _ underlying.ImageGenerator = (*Provider)(nil)
-
 // imageBaseRequest carries the parameters shared by the generations and edits endpoints. Optional fields are
 // omitted so the api defaults apply.
 type imageBaseRequest struct {
@@ -54,7 +52,7 @@ type imageEditSource struct {
 // GenerateImageStream generates or edits images via the images api. The stream emits partial previews (when
 // req.PartialImages > 0) followed by a terminal chunk carrying the final result. The request context is the
 // only deadline: the call routinely takes 30-90s before the first response byte.
-func (p *Provider) GenerateImageStream(
+func (p *Provider) GenImageStream(
 	ctx context.Context,
 	req *underlying.ImageRequest,
 ) (underlying.ImageStream, error) {
@@ -73,7 +71,7 @@ func (p *Provider) GenerateImageStream(
 // GenerateImage generates or edits images via the images api with a blocking (non-streaming) request: the
 // response is a single JSON document holding every image. req.PartialImages is ignored because previews only
 // exist in streaming mode.
-func (p *Provider) GenerateImage(
+func (p *Provider) GenImage(
 	ctx context.Context,
 	req *underlying.ImageRequest,
 ) (*underlying.ImageResult, error) {
