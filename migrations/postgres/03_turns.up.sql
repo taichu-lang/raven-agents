@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS turns (
     tokens_used      BIGINT      NOT NULL DEFAULT 0,
     last_message_id  VARCHAR(64) NOT NULL DEFAULT '',
     pending_tools    JSONB       NOT NULL DEFAULT '[]',
+    annotations      JSONB       NOT NULL DEFAULT '[]',
     created_at       BIGINT      NOT NULL DEFAULT 0,
     updated_at       BIGINT      NOT NULL DEFAULT 0
 );

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS turns (
     tokens_used      BIGINT       NOT NULL DEFAULT 0,
     last_message_id  VARCHAR(128) NOT NULL DEFAULT '',
     pending_tools    TEXT         NOT NULL DEFAULT '[]',
+    annotations      TEXT         NOT NULL DEFAULT '[]',
     created_at       BIGINT       NOT NULL DEFAULT 0,
     updated_at       BIGINT       NOT NULL DEFAULT 0
 );

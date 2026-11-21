@@ -57,12 +57,11 @@ type OutputMessage struct {
 	Content []InputMessageContent `json:"content,omitzero"`
 }
 
-// ReasoningItem is a reasoning input item sent back to the API on subsequent turns, so the model
-// keeps its reasoning context. EncryptedContent is required in stateless mode or when using zero
-// data retention; otherwise the item ID is enough for the API to look the reasoning up. The
-// display summary stored in ReasoningContent is deliberately not round-tripped: Summary is sent
-// as an empty list (the API requires the field to be present) since the encrypted content alone
-// carries the reasoning context.
+// ReasoningItem is a reasoning input item sent back to the API on subsequent turns, so the model keeps its
+// reasoning context. EncryptedContent is required in stateless mode or when using zero data retention;
+// otherwise the item ID is enough for the API to look the reasoning up. Summary round-trips the display summary
+// stored in ReasoningContent as summary_text parts; the API requires the field to be present, so it is sent as
+// an empty list when there is no summary.
 type ReasoningItem struct {
 	Type             string             `json:"type"` // Always is 'reasoning'.
 	ID               string             `json:"id"`
@@ -170,7 +169,7 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 				ReasoningItem: &ReasoningItem{
 					Type:             "reasoning",
 					ID:               reasoning.ID,
-					Summary:          make([]ReasoningSummary, 0),
+					Summary:          reasoningSummaryFrom(reasoning.Summary, reasoning.EncryptedContent != ""),
 					EncryptedContent: reasoning.EncryptedContent,
 				},
 			})
@@ -219,6 +218,26 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 	}
 
 	return items
+}
+
+// reasoningSummaryFrom converts the display summary stored in ReasoningContent back into reasoning summary
+// parts for the input item. The API requires the summary field to be present, so an empty summary still yields
+// a (non-nil) empty list.
+func reasoningSummaryFrom(summary string, hasEncrypted bool) []ReasoningSummary {
+	// Some open-source models do not support encrypted reasoning content.
+	if hasEncrypted {
+		return nil
+	}
+
+	parts := make([]ReasoningSummary, 0, 1)
+	if summary != "" {
+		parts = append(parts, ReasoningSummary{
+			Type: "summary_text",
+			Text: summary,
+		})
+	}
+
+	return parts
 }
 
 // summaryHeader prefixes a compaction summary when rendered as user input text.

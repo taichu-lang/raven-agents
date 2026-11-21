@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -343,8 +344,12 @@ func (f *fakeRepository) AddTurn(
 	return nil, nil
 }
 
-func (f *fakeRepository) UpdateTurn(ctx context.Context, turnContext *persistent.TurnContext) error {
-	return nil
+func (f *fakeRepository) UpdateTurn(
+	ctx context.Context,
+	turnContext *persistent.TurnContext,
+	annotations json.RawMessage,
+) (*database.TurnModel, error) {
+	return nil, nil
 }
 
 func (f *fakeRepository) LoadLatestTurn(

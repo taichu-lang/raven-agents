@@ -7,6 +7,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/taichu-lang/raven-agents/pkg/database"
+	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 )
 
 type Prompt struct {
@@ -18,6 +19,7 @@ type Config struct {
 	DefaultModel string                `yaml:"default_model"`
 	Store        *database.StoreConfig `yaml:"store"`
 	Providers    []ModelProvider       `yaml:"providers"`
+	WebCrawler   *webcrawler.Config    `yaml:"webcrawler,omitempty"`
 
 	// TODO(Leo): resolved from runtime?
 	AppDir string `yaml:"app_dir"`

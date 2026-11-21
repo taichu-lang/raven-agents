@@ -94,6 +94,7 @@ func (s *StoreRef) insertNextTurn(
 		UserMessageID:  userMessageID,
 		Status:         database.TurnStatusRunning,
 		PendingTools:   json.RawMessage(`[]`),
+		Annotations:    json.RawMessage(`[]`),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -129,16 +130,24 @@ func (s *StoreRef) insertNextTurn(
 // UpdateTurn syncs the mutable state the agent loop accumulated on the TurnContext (status,
 // iterations, tokens) back to the stored turn, located by the (conversation_id, turn_seq) pair
 // that AddTurn assigned. Columns the TurnContext does not own (lease, epoch, cancel flag, message
-// ids) are left untouched.
-func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) error {
+// ids) are left untouched. It returns the stored turn after the update.
+func (s *StoreRef) UpdateTurn(
+	ctx context.Context,
+	turnContext *TurnContext,
+	annotations json.RawMessage,
+) (*database.TurnModel, error) {
 	if turnContext == nil {
-		return errors.New("turn context is nil")
+		return nil, errors.New("turn context is nil")
 	}
 
 	pendingTools, err := json.Marshal(append(make([]string, 0, len(turnContext.PendingTools)),
 		turnContext.PendingTools...))
 	if err != nil {
-		return fmt.Errorf("encode pending tools: %w", err)
+		return nil, fmt.Errorf("encode pending tools: %w", err)
+	}
+
+	if len(annotations) == 0 {
+		annotations = json.RawMessage(`[]`)
 	}
 
 	turn := &database.TurnModel{
@@ -146,23 +155,34 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 		Iterations:   turnContext.Iterations,
 		TokensUsed:   turnContext.TokenUsage,
 		PendingTools: pendingTools,
+		Annotations:  annotations,
 		UpdatedAt:    time.Now().Unix(),
 	}
 
 	result, err := s.db.NewUpdate().
 		Model(turn).
-		Column("status", "iterations", "tokens_used", "pending_tools", "updated_at").
+		Column("status", "iterations", "tokens_used", "pending_tools", "annotations", "updated_at").
 		Where("conversation_id = ?", turnContext.ConversationID).
 		Where("turn_seq = ?", turnContext.TurnSeq).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("update turn %d of conversation %s: %w",
+		return nil, fmt.Errorf("update turn %d of conversation %s: %w",
 			turnContext.TurnSeq, turnContext.ConversationID, err)
 	}
 
 	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
-		return fmt.Errorf("update turn %d of conversation %s: %w",
+		return nil, fmt.Errorf("update turn %d of conversation %s: %w",
 			turnContext.TurnSeq, turnContext.ConversationID, ErrTurnNotFound)
+	}
+
+	updated := new(database.TurnModel)
+	if err := s.db.NewSelect().
+		Model(updated).
+		Where("conversation_id = ?", turnContext.ConversationID).
+		Where("turn_seq = ?", turnContext.TurnSeq).
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read back turn %d of conversation %s: %w",
+			turnContext.TurnSeq, turnContext.ConversationID, err)
 	}
 
 	s.logger.DebugContext(ctx, "updated turn",
@@ -171,7 +191,7 @@ func (s *StoreRef) UpdateTurn(ctx context.Context, turnContext *TurnContext) err
 		"status", turnContext.Status,
 	)
 
-	return nil
+	return updated, nil
 }
 
 // LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil when the

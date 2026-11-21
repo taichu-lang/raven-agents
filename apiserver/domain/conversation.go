@@ -32,6 +32,7 @@ type Turn struct {
 	CreatedAt      int64                 `json:"created_at"`
 	UpdatedAt      int64                 `json:"updated_at"`
 	Messages       []*underlying.Message `json:"messages"`
+	Annotations    json.RawMessage       `json:"annotations"`
 }
 
 type ConversationPageRequest struct {
@@ -50,18 +51,9 @@ func TurnsFromModels(
 			messages = []*underlying.Message{}
 		}
 
-		views = append(views, &Turn{
-			ID:             t.ID,
-			ConversationID: t.ConversationID,
-			TurnSeq:        t.TurnSeq,
-			Status:         t.Status,
-			TokensUsed:     t.TokensUsed,
-			Iterations:     t.Iterations,
-			UserMessageID:  t.UserMessageID,
-			CreatedAt:      t.CreatedAt,
-			UpdatedAt:      t.UpdatedAt,
-			Messages:       messages,
-		})
+		turn := TurnFromModel(t)
+		turn.Messages = messages
+		views = append(views, turn)
 	}
 
 	return views
@@ -74,5 +66,20 @@ func ConversationFromModel(model *conversation.ConversationModel) Conversation {
 		Title:          model.Title,
 		Metadata:       model.Metadata,
 		CreatedAt:      model.CreatedAt,
+	}
+}
+
+func TurnFromModel(t *database.TurnModel) *Turn {
+	return &Turn{
+		ID:             t.ID,
+		ConversationID: t.ConversationID,
+		TurnSeq:        t.TurnSeq,
+		Status:         t.Status,
+		TokensUsed:     t.TokensUsed,
+		Iterations:     t.Iterations,
+		UserMessageID:  t.UserMessageID,
+		CreatedAt:      t.CreatedAt,
+		UpdatedAt:      t.UpdatedAt,
+		Annotations:    t.Annotations,
 	}
 }

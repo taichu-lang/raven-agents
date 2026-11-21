@@ -1,11 +1,16 @@
 package agent
 
 import (
+	"encoding/json"
+	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/agent/persistent"
+	"github.com/taichu-lang/raven-agents/pkg/database"
+	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 )
 
 // AgentState represents the shared state of the agent, which can be accessed and modified by all nodes in the
@@ -35,11 +40,11 @@ type AgentState struct {
 
 	// Compactions records the number of compactions performed in this turn.
 	Compactions int64
-
 	persistent.TurnContext
+	Annotations *AnnotationSourceRegistry
 }
 
-func (s *AgentState) resetPerTurn() {
+func (s *AgentState) resetPerTurn(turn *database.TurnModel) {
 	// Both selections last for one turn: the caller restates its own with every Run, and what the model pulled
 	// in has already reached it as a tool result.
 	s.Skills = s.Skills[:0]
@@ -52,6 +57,10 @@ func (s *AgentState) resetPerTurn() {
 	s.TokenCost = 0
 	s.StartedAt = time.Now()
 	s.Compactions = 0
+	s.TurnSeq = turn.TurnSeq
+	if s.Annotations != nil {
+		s.Annotations.turnSeq = turn.TurnSeq
+	}
 }
 
 // activateSkill records a skill the model pulled in, ignoring one that is already recorded.
@@ -81,6 +90,16 @@ func (s *AgentState) onFinalChunk(chunk *underlying.ResponseChunk) *underlying.M
 	}
 
 	return assistant
+}
+
+func (s *AgentState) newAnnotationSourceRegistry() *AnnotationSourceRegistry {
+	s.Annotations = &AnnotationSourceRegistry{
+		sources:   make(map[string]*WebSource),
+		evidences: make([]*WebSource, 0),
+		turnSeq:   s.TurnSeq,
+	}
+
+	return s.Annotations
 }
 
 const (
@@ -121,4 +140,99 @@ func (b Budget) Exceeded(s *AgentState) bool {
 	}
 
 	return false
+}
+
+// WebSource holds the basic information of a web page. It is query-independent: the same URL always maps to the
+// same page, and therefore the same ID, no matter whether it was discovered by web_search or by web_fetch.
+// The ID is handed to the LLM as the source ID for citation.
+type WebSource struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// AnnotationSourceRegistry is the turn-scoped registry of external web pages. Currently, it only supports
+// web_search and web_fetch.
+type AnnotationSourceRegistry struct {
+	sync.RWMutex
+	turnSeq   int64
+	sources   map[string]*WebSource // key is `url`.
+	evidences []*WebSource          // sources in registration order.
+}
+
+// marshalEvidences encodes the sources registered so far as a JSON array.
+func (asr *AnnotationSourceRegistry) marshalEvidences() json.RawMessage {
+	asr.RLock()
+	defer asr.RUnlock()
+
+	if raw, err := json.Marshal(asr.evidences); err != nil {
+		return nil
+	} else {
+		return raw
+	}
+}
+
+func (asr *AnnotationSourceRegistry) addSearchResult(r *webcrawler.SearchResult) *WebSource {
+	asr.Lock()
+	defer asr.Unlock()
+
+	if source, ok := asr.sources[r.URL]; ok {
+		if source.Title == "" {
+			source.Title = r.Title
+		}
+
+		return source
+	}
+
+	page := &WebSource{
+		ID:    fmt.Sprintf("turn-%d-%d", asr.turnSeq, len(asr.evidences)),
+		URL:   r.URL,
+		Title: r.Title,
+	}
+
+	if r.Snippet != "" {
+		page.Content = r.Snippet
+	} else {
+		page.Content = r.Summary
+	}
+
+	asr.sources[r.URL] = page
+	asr.evidences = append(asr.evidences, page)
+
+	return page
+}
+
+func (asr *AnnotationSourceRegistry) addFetchResult(r *webcrawler.FetchResult) *WebSource {
+	asr.Lock()
+	defer asr.Unlock()
+
+	content := substring(r.RawContent, 200)
+	if source, ok := asr.sources[r.URL]; ok {
+		if source.Content == "" {
+			source.Content = content
+		}
+
+		return source
+	}
+
+	page := &WebSource{
+		ID:      fmt.Sprintf("turn-%d-%d", asr.turnSeq, len(asr.evidences)),
+		URL:     r.URL,
+		Content: content,
+	}
+	asr.sources[r.URL] = page
+	asr.evidences = append(asr.evidences, page)
+
+	return page
+}
+
+func substring(s string, length int) string {
+	runes := []rune(s)
+
+	if len(runes) > length {
+		return string(runes[:length])
+	}
+
+	return s
 }

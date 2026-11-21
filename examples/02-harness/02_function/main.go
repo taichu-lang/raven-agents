@@ -11,6 +11,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 	"github.com/taichu-lang/raven-agents/pkg/observability"
+	"github.com/taichu-lang/raven-agents/sandbox/local"
 	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/taichu-lang/raven-agents/tool/functool"
 )
@@ -21,7 +22,7 @@ type ReportRequest struct {
 	Temperature string `json:"temperature"`
 }
 
-func main() {
+func customTool() {
 	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
 	ctx := context.Background()
 	tp, _ := observability.NewTracerProvider(ctx)
@@ -105,4 +106,58 @@ Important: Only call the tool needed at each step, and wait for the result befor
 	<-done
 
 	a.Shutdown(ctx)
+}
+
+func builtExecCommand() {
+	agent.UseJsonLog(agent.WithLoggerLevel("debug"))
+
+	ctx := context.Background()
+	tp, _ := observability.NewTracerProvider(ctx)
+	defer tp.Shutdown(ctx)
+
+	bus := event.NewMemoryBus()
+	subscription := bus.Subscribe()
+	defer bus.Unsubscribe(subscription.ID)
+
+	done := make(chan struct{}, 1)
+	go func() {
+		for e := range subscription.Channel {
+			slog.Debug("on event", "source", e.Source, "name", e.Name, "payload", e.Payload)
+			if e.Name == event.EventLLMComplete {
+				done <- struct{}{}
+			}
+		}
+	}()
+
+	a := agent.New(bus, tool.NewToolRegistry(nil), &agent.AgentOptions{
+		Name: "builtin-function",
+		LLM: &underlying.ProviderOptions{
+			ApiKey:       os.Getenv("OPENAI_APIKEY"),
+			ChatURL:      fmt.Sprintf("%s/v1/responses", os.Getenv("OPENAI_API")),
+			Instructions: `You're a helpful assistant.`,
+			Catalog: &underlying.Catalog{
+				ID: "glm-5.3",
+			},
+		},
+		UserID:          "1",
+		ConversationID:  "1",
+		SandboxProvider: local.NewProvider(),
+	})
+	a.Run(ctx, []*underlying.Message{
+		{
+			ID:   "1",
+			Role: underlying.RoleUser,
+			Contents: underlying.MessageContents{
+				underlying.NewTextContent("今天天气怎么样?"),
+			},
+		},
+	})
+	<-done
+
+	a.Shutdown(ctx)
+}
+
+func main() {
+	customTool()
+	builtExecCommand()
 }

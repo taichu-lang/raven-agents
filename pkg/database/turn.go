@@ -58,6 +58,9 @@ type TurnModel struct {
 	// waiting_approval; the calls themselves live in the messages.
 	PendingTools json.RawMessage `bun:"pending_tools,notnull"`
 
+	// Annotations holds the external resources (evidences) the turn fetched successfully, as a JSON array.
+	Annotations json.RawMessage `bun:"annotations,notnull"`
+
 	// CreatedAt is a unix timestamp in seconds, assigned by the application layer.
 	CreatedAt int64 `bun:"created_at,notnull"`
 

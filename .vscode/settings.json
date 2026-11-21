@@ -8,6 +8,9 @@
     "omitzero",
     "ssestream",
     "taichu",
+    "tavily",
+    "uptrace",
+    "webcrawler",
     "webp"
   ],
   "emeraldwalk.runonsave": {

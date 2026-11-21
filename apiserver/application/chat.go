@@ -17,6 +17,7 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
 	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/sandbox/local"
 	"github.com/taichu-lang/raven-agents/tool"
@@ -114,6 +115,9 @@ func (s *ChatService) Chat(
 		},
 		SkillDirs:       []string{s.skillsDir},
 		SandboxProvider: s.sandboxProvider,
+	}
+	if s.cfg.WebCrawler != nil {
+		options.Crawler = webcrawler.NewCrawler(s.cfg.WebCrawler)
 	}
 
 	// Plugins installed on the request context contribute their LLM middlewares; the chat service stays unaware

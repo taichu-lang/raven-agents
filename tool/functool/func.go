@@ -1,3 +1,18 @@
+// Package functool wraps plain Go functions as tools that an LLM can call.
+//
+// RFC (proposal): tool output should be a JSON object, not a bare array or
+// scalar.
+//
+// An object gives the model named fields it can read without guessing, and it
+// can grow over time (for example "total", "next_page", "truncated", "error")
+// without breaking existing consumers. A bare array or scalar has no such room.
+// It also matches MCP, where structuredContent must be an object and the root
+// of outputSchema must be "object".
+//
+// This package does not enforce the rule. New accepts any Out type, and a
+// non-object Out (such as []*T) is still allowed. Wrapping a slice as
+// struct{ Results []*T `json:"results"` } is the recommended form. Simple
+// tools that return a string or an int may keep doing so.
 package functool
 
 import (
@@ -52,6 +67,24 @@ func New[In, Out any](cfg Config, h HandlerT[In, Out]) (tool.FuncTool, error) {
 		return nil, fmt.Errorf("schema of handler's output can not be resolved: %w", err)
 	}
 
+	// validateOutput checks out against the output schema. jsonschema-go cannot validate Go structs directly;
+	// Validate returns "cannot validate against a struct" for them, and slices of structs hit the same error.
+	// So validate the JSON form of the output instead. That is the data model the LLM receives, and it honors
+	// json tags, omitempty, and custom MarshalJSON methods, which the schema was generated from.
+	validateOutput := func(out any) error {
+		bytes, err := json.Marshal(out)
+		if err != nil {
+			return fmt.Errorf("marshal output: %w", err)
+		}
+
+		var validating any
+		if err := json.Unmarshal(bytes, &validating); err != nil {
+			return fmt.Errorf("unmarshal output: %w", err)
+		}
+
+		return resolvedOutput.Validate(validating)
+	}
+
 	t := &funcTool{
 		cfg:          cfg,
 		inputSchema:  inputSchema,
@@ -88,7 +121,7 @@ func New[In, Out any](cfg Config, h HandlerT[In, Out]) (tool.FuncTool, error) {
 			return nil, err
 		}
 
-		if err := resolvedOutput.Validate(out); err != nil {
+		if err := validateOutput(out); err != nil {
 			return nil, fmt.Errorf("validate output against output schema: %w", err)
 		}
 

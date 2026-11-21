@@ -139,9 +139,9 @@ func toolSearchCallToContent(call responses.ResponseToolSearchCall) *underlying.
 }
 
 // reasoningItemToContent converts a completed reasoning item from the response.completed event. The summary
-// parts are joined into Summary for display purposes only (ex: replaying the "thinking" section from persisted
-// history); it is NOT sent back to the API. Only the item ID and the encrypted content round-trip: the
-// encrypted content is the opaque payload the model needs to keep its reasoning context on subsequent turns.
+// parts are joined into Summary for display (ex: replaying the "thinking" section from persisted history)
+// and round-trip back to the API as summary parts on subsequent turns. The item ID and the encrypted content
+// also round-trip: the encrypted content is the opaque payload the model needs to keep its reasoning context.
 func reasoningItemToContent(item responses.ResponseReasoningItem) *underlying.ReasoningContent {
 	var sb strings.Builder
 	for _, part := range item.Summary {

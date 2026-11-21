@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
@@ -19,7 +20,13 @@ type Repository interface {
 		userMessageID string,
 	) (*database.TurnModel, error)
 
-	UpdateTurn(ctx context.Context, turnContext *persistent.TurnContext) error
+	// UpdateTurn syncs the mutable turn state to the store and returns the updated turn.
+	// annotations is the JSON array of the external web pages referenced in the turn.
+	UpdateTurn(
+		ctx context.Context,
+		turnContext *persistent.TurnContext,
+		annotations json.RawMessage,
+	) (*database.TurnModel, error)
 
 	// LoadLatestTurn returns the turn with the largest turn_seq of the conversation, or nil if none.
 	LoadLatestTurn(ctx context.Context, conversationID string) (*database.TurnModel, error)

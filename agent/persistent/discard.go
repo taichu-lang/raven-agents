@@ -2,6 +2,7 @@ package persistent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -34,8 +35,21 @@ func (d *DiscardStore) AddTurn(
 func (d *DiscardStore) UpdateTurn(
 	ctx context.Context,
 	turnContext *TurnContext,
-) error {
-	return nil
+	annotations json.RawMessage,
+) (*database.TurnModel, error) {
+	if turnContext == nil {
+		return nil, errors.New("turn context is nil")
+	}
+
+	return &database.TurnModel{
+		ConversationID: turnContext.ConversationID,
+		TurnSeq:        turnContext.TurnSeq,
+		Status:         turnContext.Status,
+		Iterations:     turnContext.Iterations,
+		TokensUsed:     turnContext.TokenUsage,
+		Annotations:    annotations,
+		UpdatedAt:      time.Now().Unix(),
+	}, nil
 }
 
 func (d *DiscardStore) LoadLatestTurn(ctx context.Context, conversationID string) (*database.TurnModel, error) {

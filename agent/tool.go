@@ -12,14 +12,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/taichu-lang/raven-agents/tool/functool"
 )
 
 const (
-	ToolNameExec     string = "exec-command"
-	ToolNameQuestion string = "question"
+	ToolNameSkill     string = "skill"
+	ToolNameExec      string = "exec_command"
+	ToolNameQuestion  string = "question"
+	ToolNameWebSearch string = "web_search"
+	ToolNameWebFetch  string = "web_fetch"
 )
 
 // Definition of builtin `exec_command` tool.
@@ -39,9 +43,8 @@ func NewExecTool(sb sandbox.Sandbox) tool.FuncTool {
 	}
 
 	execTool, err := functool.New(functool.Config{
-		Name: ToolNameExec,
-		Description: "Runs a shell command in the sandbox and returns its output. " +
-			"The interpreter is part of the command line itself, ex: \"python3 main.py\" or \"node script.mjs\".",
+		Name:        ToolNameExec,
+		Description: prompts[ToolNameExec],
 	}, func(ctx context.Context, input ExecToolInput) (string, error) {
 		result, err := sb.Exec(ctx, &sandbox.ExecRequest{
 			Command: input.Cmd,
@@ -121,7 +124,7 @@ type QuestionToolInput struct {
 func NewQuestionTool(bus event.Bus) tool.FuncTool {
 	questionTool, err := functool.New(functool.Config{
 		Name:        ToolNameQuestion,
-		Description: "Use this tool when you need to ask the user questions during execution. This allows you to:\n1. Gather user preferences or requirements\n2. Clarify ambiguous instructions\n3. Get decisions on implementation choices as you work\n4. Offer choices to the user about what direction to take.\n\nUsage notes:\n- A \"Type your own answer\" option is added automatically; don't include a separate option for free form answers\n- If you recommend a specific option, make that the first option in the list and add \"(Recommended)\" at the end of the label",
+		Description: prompts[ToolNameQuestion],
 	}, func(ctx context.Context, input QuestionToolInput) (string, error) {
 		bus.Emit(ctx, &event.Event{
 			ID:     uuid.NewString(),
@@ -159,7 +162,7 @@ func NewToolSearchTool(registry *tool.ToolRegistry) tool.FuncTool {
 		Name: underlying.ToolSearchToolName,
 		// TODO(Leo): list the enabled MCP servers here (design doc 3.6 discoverability) once the MCP manager
 		// lands; the description must stay constant within a turn.
-		Description: "# Tool discovery\n\nSearches over deferred tool metadata with BM25 and exposes matching tools for the next model call.\n\nSome of the tools may not have been provided to you upfront (ex: tools provided by MCP servers), and you should use this tool (`tool_search`) to search for the required tools.",
+		Description: prompts[underlying.ToolSearchToolName],
 	}, func(ctx context.Context, input toolSearchInput) (string, error) {
 		hits, err := registry.Search(ctx, input.Query, input.Limit)
 		if err != nil {
@@ -268,4 +271,90 @@ func toolNames(hits []tool.FuncTool) []string {
 	}
 
 	return names
+}
+
+// Definition of builtin 'web-search' tool.
+
+// web_search should not be the mandatory entry point for every real-time information query; it is a tool for
+// information discovery. In some cases the model already knows where the information lives and can fetch it
+// directly with web_fetch. For example, for "What is the latest Go version?", the model knows to fetch it from
+// `https://go.dev/dl/`.
+
+// webSearchResultOutput is a search result as seen by the LLM, tagged with the source ID of its page.
+type webSearchResultOutput struct {
+	SourceID string `json:"source_id"`
+	webcrawler.SearchResult
+}
+
+type webSearchOutput struct {
+	Results []webSearchResultOutput `json:"result"`
+}
+
+func NewWebSearchTool(crawler webcrawler.Crawler, registry *AnnotationSourceRegistry) tool.FuncTool {
+	searchTool, err := functool.New(functool.Config{
+		Name:        ToolNameWebSearch,
+		Description: prompts[ToolNameWebSearch],
+	}, func(ctx context.Context, input webcrawler.SearchRequest) (*webSearchOutput, error) {
+		resp, err := crawler.Search(ctx, &input)
+		if err != nil {
+			return nil, err
+		}
+
+		output := &webSearchOutput{
+			Results: make([]webSearchResultOutput, 0, len(resp.Results)),
+		}
+
+		for _, r := range resp.Results {
+			page := registry.addSearchResult(r)
+			output.Results = append(output.Results, webSearchResultOutput{
+				SourceID: page.ID,
+				Title:    r.Title,
+				URL:      r.URL,
+				Snippet:  r.Snippet,
+				Summary:  r.Summary,
+			})
+		}
+
+		return output, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return searchTool
+}
+
+// Definition of builtin 'web-fetch' tool.
+
+type webFetchInput struct {
+	Query string `json:"query" jsonschema:"The specific question or information to extract from the page. Use the user's original request or a more focused sub-question. Extract only information relevant to this query."`
+	URL   string `json:"url"   jsonschema:"The HTTP or HTTPS URL to fetch content from"`
+}
+
+const webFetchWithAnnotation = "Source ID: %s\nTitle: %s\nURL: %s\n\n---\n\n"
+
+func NewWebFetchTool(crawler webcrawler.Crawler, registry *AnnotationSourceRegistry) tool.FuncTool {
+	fetchTool, err := functool.New(functool.Config{
+		Name:        ToolNameWebFetch,
+		Description: prompts[ToolNameWebFetch],
+	}, func(ctx context.Context, input webFetchInput) (string, error) {
+		resp, err := crawler.Fetch(ctx, &webcrawler.FetchRequest{URLs: []string{input.URL}, Query: input.Query})
+		if err != nil {
+			return "", err
+		}
+
+		if len(resp.Results) == 0 {
+			return "", errors.New("no page content")
+		}
+
+		// The LLM may call web_fetch directly without web_search, in which case the title is still unknown.
+		result := resp.Results[0]
+		page := registry.addFetchResult(&result)
+		return fmt.Sprintf(webFetchWithAnnotation, page.ID, page.Title, page.URL) + result.RawContent, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return fetchTool
 }

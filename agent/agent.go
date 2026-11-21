@@ -16,6 +16,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/taichu-lang/raven-agents/pkg/event"
+	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 	"github.com/taichu-lang/raven-agents/sandbox"
 	"github.com/taichu-lang/raven-agents/tool"
 	"github.com/uptrace/bun"
@@ -55,6 +56,8 @@ type AgentOptions struct {
 	// Compact configures context compaction; nil selects the defaults. Compaction stays disabled when a context
 	// window is not provided.
 	Compact *CompactOptions
+
+	Crawler webcrawler.Crawler
 }
 
 type Agent struct {
@@ -69,11 +72,10 @@ type Agent struct {
 
 	mq             event.Bus
 	contextManager *ContextManager
-
-	tracer *TraceSubscriber
+	tracer         *TraceSubscriber
 }
 
-func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agent {
+func New(mq event.Bus, tools *tool.ToolRegistry, options *AgentOptions) *Agent {
 	if err := options.validate(); err != nil {
 		panic(err)
 	}
@@ -86,8 +88,8 @@ func New(eventBus event.Bus, tr *tool.ToolRegistry, options *AgentOptions) *Agen
 			UserID:         options.UserID,
 			ConversationID: options.ConversationID,
 		},
-		mq:           eventBus,
-		ToolRegistry: tr,
+		mq:           mq,
+		ToolRegistry: tools,
 		Hooks:        hook.NewRegistry(),
 		LLM:          llm.NewRunner(options.LLM, options.Middlewares...),
 	}
@@ -127,7 +129,7 @@ func (a *Agent) init(options *AgentOptions) {
 		a.Sandbox = sb
 	}
 
-	a.addBuiltinTools()
+	a.addBuiltinTools(options)
 
 	// Subscribe synchronously so that no event emitted by Run is missed, and only consume the
 	// events in the background.
@@ -135,7 +137,7 @@ func (a *Agent) init(options *AgentOptions) {
 	a.tracer.Start()
 }
 
-func (a *Agent) addBuiltinTools() {
+func (a *Agent) addBuiltinTools(options *AgentOptions) {
 	if a.SkillRegistry == nil {
 		panic("call this function after SkillRegistry is initialized")
 	}
@@ -158,6 +160,12 @@ func (a *Agent) addBuiltinTools() {
 	a.ToolRegistry.Register(NewToolSearchTool(a.ToolRegistry), func() bool {
 		return a.ToolRegistry.HasDeferred()
 	})
+
+	if options.Crawler != nil {
+		registry := a.State.newAnnotationSourceRegistry()
+		a.ToolRegistry.Register(NewWebSearchTool(options.Crawler, registry), nil)
+		a.ToolRegistry.Register(NewWebFetchTool(options.Crawler, registry), nil)
+	}
 }
 
 // Shutdown unsubscribes the tracer from the event bus and waits for it to consume the events still buffered in
@@ -180,7 +188,6 @@ func (a *Agent) Shutdown(ctx context.Context) error {
 
 // Run is the agent's main loop.
 func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
-	a.State.resetPerTurn()
 	messages, err := a.beforeUserInput(ctx, input)
 	if err != nil {
 		return err
@@ -191,16 +198,16 @@ func (a *Agent) Run(ctx context.Context, input []*underlying.Message) error {
 		return err
 	}
 
+	a.State.resetPerTurn(turn)
 	a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnStart, &event.TurnStartPayload{
 		ConversationID: a.State.ConversationID,
-		TurnSeq:        turn.TurnSeq,
+		TurnSeq:        a.State.TurnSeq,
 		Model:          a.State.Model,
 		Provider:       a.contextManager.catalog.Provider,
 		Messages:       messages,
 	})
 	defer func() {
-		a.saveTurn(ctx)
-		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
+		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, a.saveTurn(ctx))
 	}()
 
 	// Add user message first, as the tool selector might depend on the latest user message.
@@ -252,8 +259,7 @@ func (a *Agent) Resume(ctx context.Context, resume []*underlying.ToolResultConte
 		Messages:       []*underlying.Message{message},
 	})
 	defer func() {
-		a.saveTurn(ctx)
-		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, nil)
+		a.onEvent(ctx, event.SourceTypeAgent, event.EventTurnEnd, a.saveTurn(ctx))
 	}()
 
 	a.onEvent(ctx, event.SourceTypeAgent, event.EventToolResult, message)
@@ -461,7 +467,7 @@ func (a *Agent) recordActivatedSkills(
 	}
 
 	for _, call := range calls {
-		if call.Name != SkillToolName {
+		if call.Name != ToolNameSkill {
 			continue
 		}
 
@@ -550,15 +556,28 @@ func (a *Agent) restoreToolCalls(pendingIDs []string) {
 	}
 }
 
-// saveTurn syncs the mutable turn state, including the calls waiting for the user, to the store.
-func (a *Agent) saveTurn(ctx context.Context) {
+// saveTurn syncs the mutable turn state, including the calls waiting for the user, to the store and returns
+// the latest turn, which is the payload of the turn end event. It returns nil when the update failed.
+func (a *Agent) saveTurn(ctx context.Context) *database.TurnModel {
 	pendingIDs := make([]string, 0, len(a.State.Pending))
 	for _, call := range a.State.Pending {
 		pendingIDs = append(pendingIDs, call.ID)
 	}
 
 	a.State.PendingTools = pendingIDs
-	_ = a.Store.UpdateTurn(ctx, &a.State.TurnContext)
+
+	var annotations json.RawMessage
+	if a.State.Annotations != nil {
+		annotations = a.State.Annotations.marshalEvidences()
+	}
+
+	turn, err := a.Store.UpdateTurn(ctx, &a.State.TurnContext, annotations)
+	if err != nil {
+		slog.Warn("failed to save turn", "err", err)
+		return nil
+	}
+
+	return turn
 }
 
 func (o *AgentOptions) validate() error {

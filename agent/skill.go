@@ -14,10 +14,6 @@ import (
 	"github.com/taichu-lang/raven-agents/tool/functool"
 )
 
-// SkillToolName is the name of the builtin tool the model calls to pull in the instructions of a
-// skill it has only seen named in the catalog.
-const SkillToolName = "skill"
-
 var ErrSkillNotFound = errors.New("skill not found")
 
 type SkillActiveFunc func(state *AgentState) bool
@@ -156,10 +152,8 @@ type skillToolInput struct {
 // skills the model has pulled in is recorded by the agent itself, once the calls have been joined.
 func NewSkillTool(registry *SkillRegistry) tool.FuncTool {
 	tool, err := functool.New(functool.Config{
-		Name: SkillToolName,
-		Description: "Load the full instructions of one of the available skills. Call it with the " +
-			"name of the skill before working on a task the skill covers, and then follow the " +
-			"instructions it returns.",
+		Name:        ToolNameSkill,
+		Description: prompts[ToolNameSkill],
 	}, func(ctx context.Context, in skillToolInput) (string, error) {
 		loaded, err := registry.Load(in.Name)
 		if err != nil {

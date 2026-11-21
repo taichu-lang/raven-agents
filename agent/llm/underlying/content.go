@@ -211,10 +211,10 @@ func (t *ToolResultContent) MarshalJSON() ([]byte, error) {
 }
 
 // ReasoningContent carries the reasoning produced by a reasoning model. Summary holds the human-readable
-// reasoning summary for display only (ex: the "thinking" section of the UI, including history replay); it is
-// never sent back to the provider. EncryptedContent is the base64-encoded, provider-encrypted reasoning
-// payload; it must be preserved and sent back on subsequent turns so the model keeps its reasoning context (ex:
-// stateless mode or ZDR).
+// reasoning summary for display (ex: the "thinking" section of the UI, including history replay); providers may
+// also round-trip it back as reasoning summary parts. EncryptedContent is the base64-encoded,
+// provider-encrypted reasoning payload; it must be preserved and sent back on subsequent turns so the model
+// keeps its reasoning context (ex: stateless mode or ZDR).
 type ReasoningContent struct {
 	ID               string `json:"id,omitzero"`
 	Summary          string `json:"summary,omitzero"`

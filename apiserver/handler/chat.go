@@ -11,6 +11,7 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/application"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
 	"github.com/taichu-lang/raven-agents/apiserver/handler/middlewares"
+	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 )
 
@@ -73,25 +74,19 @@ func (h *ChatHandler) chat(c *gin.Context) {
 
 			// TODO(Leo): handle error event.
 			switch e.Name {
-			case application.EventConversationStart:
-				fallthrough
-			case event.EventTurnStart:
-				fallthrough
-			case event.EventLLMDelta:
-				fallthrough
-			case event.EventLLMComplete:
-				fallthrough
-			case event.EventToolCall:
-				fallthrough
-			case event.EventToolResult:
-				fallthrough
-			case event.EventHumanApproval:
-				fallthrough
-			case event.EventLLMReasoningDelta:
+			case application.EventConversationStart,
+				event.EventTurnStart,
+				event.EventLLMDelta,
+				event.EventLLMComplete,
+				event.EventToolCall,
+				event.EventToolResult,
+				event.EventHumanApproval,
+				event.EventLLMReasoningDelta:
 				c.SSEvent(string(e.Name), e.Payload)
 
 			case event.EventTurnEnd:
-				c.SSEvent(string(e.Name), "[DONE]")
+				turn := e.Payload.(*database.TurnModel)
+				c.SSEvent(string(e.Name), domain.TurnFromModel(turn))
 			}
 
 			return true
