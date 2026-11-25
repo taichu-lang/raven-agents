@@ -71,9 +71,9 @@ func TestResolveImageRequest(t *testing.T) {
 		{
 			name: "too many source images",
 			req: func() *underlying.ImageRequest {
-				images := make([]*underlying.ImageSource, 17)
+				images := make([]*underlying.MediaContent, 17)
 				for i := range images {
-					images[i] = underlying.NewImageSourceBytes(underlying.MediaTypeImagePNG, []byte("img"))
+					images[i] = underlying.NewMediaContentFromData(underlying.MediaTypeImagePNG, []byte("img"))
 				}
 				return &underlying.ImageRequest{Prompt: "edit", Images: images}
 			}(),
@@ -83,10 +83,10 @@ func TestResolveImageRequest(t *testing.T) {
 			name: "mask must be png",
 			req: &underlying.ImageRequest{
 				Prompt: "edit",
-				Images: []*underlying.ImageSource{
-					underlying.NewImageSourceBytes(underlying.MediaTypeImageJPG, []byte("img")),
+				Images: []*underlying.MediaContent{
+					underlying.NewMediaContentFromData(underlying.MediaTypeImageJPG, []byte("img")),
 				},
-				Mask: underlying.NewImageSourceBytes(underlying.MediaTypeImageJPG, []byte("mask")),
+				Mask: underlying.NewMediaContentFromData(underlying.MediaTypeImageJPG, []byte("mask")),
 			},
 			wantErr: "mask must be a png image",
 		},
@@ -117,12 +117,11 @@ func TestBuildImageEditBody(t *testing.T) {
 
 	body, edit, err := p.buildImageRequestBody(&underlying.ImageRequest{
 		Prompt: "replace the sky",
-		Images: []*underlying.ImageSource{
-			underlying.NewImageSourceBytes(underlying.MediaTypeImagePNG, []byte("img")),
+		Images: []*underlying.MediaContent{
+			underlying.NewMediaContentFromData(underlying.MediaTypeImagePNG, []byte("img")),
 		},
-		Mask:          underlying.NewImageSourceBytes(underlying.MediaTypeImagePNG, []byte("mask")),
-		Size:          underlying.ImageSizeSquare,
-		InputFidelity: "high",
+		Mask: underlying.NewMediaContentFromData(underlying.MediaTypeImagePNG, []byte("mask")),
+		Size: underlying.ImageSizeSquare,
 	}, underlying.ImageSizeSquare, true)
 	if err != nil {
 		t.Fatal(err)
@@ -149,12 +148,15 @@ func TestBuildImageEditBody(t *testing.T) {
 		t.Fatalf("unexpected source image: %v", first)
 	}
 
-	assertBodyValue(
-		t,
-		decoded,
-		"mask",
-		"data:image/png;base64,"+base64.StdEncoding.EncodeToString([]byte("mask")),
-	)
+	if mask, ok := decoded["mask"].(map[string]any); !ok {
+		t.Fatalf("expected an image_url object, got %v", mask)
+	} else {
+		url := mask["image_url"]
+		if url != "data:image/png;base64,"+base64.StdEncoding.EncodeToString([]byte("mask")) {
+			t.Fatalf("unexpected mask image, %v", mask)
+		}
+	}
+
 	assertBodyValue(t, decoded, "input_fidelity", "high")
 	assertBodyValue(t, decoded, "stream", true)
 }
@@ -253,12 +255,12 @@ func TestStreamWithoutImagesErrors(t *testing.T) {
 	}
 }
 
-func TestURIContentFeedsVisionInput(t *testing.T) {
+func TestMediaContentFeedsVisionInput(t *testing.T) {
 	items := inputItemsFromMessage(&underlying.Message{
 		Role: underlying.RoleUser,
 		Contents: underlying.MessageContents{
 			underlying.NewTextContent("what is in this image?"),
-			underlying.NewURIContent(underlying.MediaTypeImageJPG, "https://example.com/photo.jpg"),
+			underlying.NewMediaContentFromURI(underlying.MediaTypeImageJPG, "https://example.com/photo.jpg"),
 		},
 	})
 	if len(items) != 1 {

@@ -9,15 +9,15 @@ import (
 func TestImageSourceValidate(t *testing.T) {
 	tests := []struct {
 		name    string
-		source  *ImageSource
+		source  *MediaContent
 		wantErr string
 	}{
-		{name: "bytes", source: NewImageSourceBytes(MediaTypeImagePNG, []byte("png"))},
-		{name: "uri", source: NewImageSourceURI(MediaTypeImageJPG, "https://example.com/a.jpg")},
-		{name: "data uri", source: NewImageSourceURI(MediaTypeImagePNG, "data:image/png;base64,AAAA")},
+		{name: "bytes", source: NewMediaContentFromData(MediaTypeImagePNG, []byte("png"))},
+		{name: "uri", source: NewMediaContentFromURI(MediaTypeImageJPG, "https://example.com/a.jpg")},
+		{name: "data uri", source: NewMediaContentFromURI(MediaTypeImagePNG, "data:image/png;base64,AAAA")},
 		{
 			name: "both set",
-			source: &ImageSource{
+			source: &MediaContent{
 				MediaType: MediaTypeImagePNG,
 				Data:      []byte("x"),
 				URI:       "data:image/png;base64,AAAA",
@@ -26,7 +26,7 @@ func TestImageSourceValidate(t *testing.T) {
 		},
 		{
 			name:    "neither set",
-			source:  &ImageSource{MediaType: MediaTypeImagePNG},
+			source:  &MediaContent{MediaType: MediaTypeImagePNG},
 			wantErr: "one of data or uri",
 		},
 	}
@@ -49,26 +49,15 @@ func TestImageSourceValidate(t *testing.T) {
 }
 
 func TestImageSourceDataURL(t *testing.T) {
-	encoded, err := NewImageSourceBytes(MediaTypeImagePNG, []byte("png-bytes")).DataURL()
-	if err != nil {
-		t.Fatal(err)
-	}
+	encoded := NewMediaContentFromData(MediaTypeImagePNG, []byte("png-bytes")).ImageURI()
 	if !strings.HasPrefix(encoded, "data:image/png;base64,") {
 		t.Fatalf("unexpected data url: %s", encoded)
 	}
 
 	passthrough := "data:image/jpeg;base64,QUJD"
-	dataURL, err := NewImageSourceURI(MediaTypeImageJPG, passthrough).DataURL()
-	if err != nil {
-		t.Fatal(err)
-	}
+	dataURL := NewMediaContentFromURI(MediaTypeImageJPG, passthrough).ImageURI()
 	if dataURL != passthrough {
 		t.Fatalf("data url not passed through: %s", dataURL)
-	}
-
-	_, err = NewImageSourceURI(MediaTypeImageJPG, "https://example.com/a.jpg").DataURL()
-	if err == nil || !strings.Contains(err.Error(), "remote uri") {
-		t.Fatalf("expected remote uri error, got %v", err)
 	}
 }
 
@@ -83,7 +72,7 @@ func TestImageRequestValidate(t *testing.T) {
 		{
 			name:    "empty instructions",
 			req:     &ImageRequest{},
-			wantErr: "instructions is required",
+			wantErr: "image request: prompt is required",
 		},
 		{
 			name: "transparent with jpeg",
@@ -111,7 +100,7 @@ func TestImageRequestValidate(t *testing.T) {
 			name: "invalid source image",
 			req: &ImageRequest{
 				Prompt: "a cat",
-				Images: []*ImageSource{{MediaType: MediaTypeImagePNG}},
+				Images: []*MediaContent{{MediaType: MediaTypeImagePNG}},
 			},
 			wantErr: "images[0]",
 		},
@@ -119,7 +108,7 @@ func TestImageRequestValidate(t *testing.T) {
 			name: "mask without images",
 			req: &ImageRequest{
 				Prompt: "a cat",
-				Mask:   NewImageSourceBytes(MediaTypeImagePNG, []byte("m")),
+				Mask:   NewMediaContentFromData(MediaTypeImagePNG, []byte("m")),
 			},
 			wantErr: "mask requires at least one source image",
 		},
@@ -127,12 +116,11 @@ func TestImageRequestValidate(t *testing.T) {
 			name: "full edit",
 			req: &ImageRequest{
 				Prompt:        "replace the sky",
-				Images:        []*ImageSource{NewImageSourceBytes(MediaTypeImagePNG, []byte("img"))},
-				Mask:          NewImageSourceBytes(MediaTypeImagePNG, []byte("mask")),
+				Images:        []*MediaContent{NewMediaContentFromData(MediaTypeImagePNG, []byte("img"))},
+				Mask:          NewMediaContentFromData(MediaTypeImagePNG, []byte("mask")),
 				Size:          ImageSizeSquare,
 				Count:         2,
 				Format:        ImageFormatWebP,
-				InputFidelity: "high",
 				PartialImages: 2,
 			},
 		},
@@ -156,9 +144,9 @@ func TestImageRequestValidate(t *testing.T) {
 }
 
 func TestImageResultContents(t *testing.T) {
-	result := &ImageResult{Images: []*ImageSource{
-		NewImageSourceBytes(MediaTypeImagePNG, []byte("png")),
-		NewImageSourceURI(MediaTypeImageJPG, "https://example.com/a.jpg"),
+	result := &ImageResult{Images: []*MediaContent{
+		NewMediaContentFromData(MediaTypeImagePNG, []byte("png")),
+		NewMediaContentFromURI(MediaTypeImageJPG, "https://example.com/a.jpg"),
 	}}
 
 	contents := result.Contents()
@@ -166,11 +154,11 @@ func TestImageResultContents(t *testing.T) {
 		t.Fatalf("expected 2 contents, got %d", len(contents))
 	}
 
-	if data, ok := contents[0].(*DataContent); !ok || string(data.Data) != "png" {
+	if data, ok := contents[0].(*MediaContent); !ok || string(data.Data) != "png" {
 		t.Fatalf("unexpected data content: %+v", contents[0])
 	}
 
-	if uri, ok := contents[1].(*URIContent); !ok || uri.URI != "https://example.com/a.jpg" {
+	if uri, ok := contents[1].(*MediaContent); !ok || uri.URI != "https://example.com/a.jpg" {
 		t.Fatalf("unexpected uri content: %+v", contents[1])
 	}
 

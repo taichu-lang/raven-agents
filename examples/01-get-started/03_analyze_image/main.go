@@ -43,7 +43,7 @@ func main() {
 				ID:   "1",
 				Role: underlying.RoleUser,
 				Contents: underlying.MessageContents{
-					underlying.NewDataContent(underlying.MediaTypeImageJPG, imageData),
+					underlying.NewMediaContentFromData(underlying.MediaTypeImageJPG, imageData),
 				},
 			},
 		},

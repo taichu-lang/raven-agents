@@ -38,9 +38,11 @@ type imageGenerateRequest struct {
 // alternative is not implemented).
 type imageEditRequest struct {
 	imageBaseRequest
-	Images        []imageEditSource `json:"images"`
-	Mask          imageEditSource   `json:"mask,omitzero"`
-	InputFidelity string            `json:"input_fidelity,omitzero"`
+	Images []imageEditSource `json:"images"`
+	Mask   imageEditSource   `json:"mask,omitzero"`
+
+	// The model 'gpt-image-2.6-flare' does not support the 'input_fidelity' parameter.
+	// InputFidelity string            `json:"input_fidelity,omitzero"`
 }
 
 // imageEditSource is one entry of the edits images array: a data URL nested under the image_url key, the shape
@@ -86,11 +88,11 @@ func (p *Provider) GenImage(
 		return nil, fmt.Errorf("decode image generation response: %w", err)
 	}
 
-	result := &underlying.ImageResult{Images: make([]*underlying.ImageSource, 0, len(response.Data))}
+	result := &underlying.ImageResult{Images: make([]*underlying.MediaContent, 0, len(response.Data))}
 	for _, item := range response.Data {
 		if item.B64JSON == "" {
 			if item.URL != "" {
-				result.Images = append(result.Images, &underlying.ImageSource{
+				result.Images = append(result.Images, &underlying.MediaContent{
 					MediaType: mediaTypeFromFormat(string(response.OutputFormat)),
 					URI:       item.URL,
 				})
@@ -112,6 +114,7 @@ func (p *Provider) GenImage(
 	}
 
 	if response.Usage.TotalTokens > 0 {
+		// TODO(Leo): split to text usage and image usage.
 		result.Usage = &underlying.UsageContent{
 			Input:  response.Usage.InputTokens,
 			Output: response.Usage.OutputTokens,
@@ -220,24 +223,15 @@ func (p *Provider) buildImageRequestBody(
 		editReq := imageEditRequest{
 			imageBaseRequest: base,
 			Images:           make([]imageEditSource, 0, len(req.Images)),
-			InputFidelity:    req.InputFidelity,
 		}
 
-		for i, src := range req.Images {
-			dataURL, err := src.DataURL()
-			if err != nil {
-				return nil, false, fmt.Errorf("image request: images[%d]: %w", i, err)
-			}
-
-			editReq.Images = append(editReq.Images, imageEditSource{ImageURL: dataURL})
+		for _, src := range req.Images {
+			imageURI := src.ImageURI()
+			editReq.Images = append(editReq.Images, imageEditSource{ImageURL: imageURI})
 		}
 
 		if req.Mask != nil {
-			maskURL, err := req.Mask.DataURL()
-			if err != nil {
-				return nil, false, fmt.Errorf("image request: mask: %w", err)
-			}
-
+			maskURL := req.Mask.ImageURI()
 			editReq.Mask = imageEditSource{ImageURL: maskURL}
 		}
 
@@ -262,7 +256,7 @@ func (p *Provider) streamGenerations(
 	return func(yield func(*underlying.ImageChunk, error) bool) {
 		defer resp.Body.Close()
 
-		result := &underlying.ImageResult{Images: make([]*underlying.ImageSource, 0)}
+		result := &underlying.ImageResult{Images: make([]*underlying.MediaContent, 0)}
 		for frame, err := range sseFrames(resp.Body) {
 			if err != nil {
 				yield(nil, err)
@@ -320,7 +314,7 @@ func (p *Provider) streamEdits(
 	return func(yield func(*underlying.ImageChunk, error) bool) {
 		defer resp.Body.Close()
 
-		result := &underlying.ImageResult{Images: make([]*underlying.ImageSource, 0)}
+		result := &underlying.ImageResult{Images: make([]*underlying.MediaContent, 0)}
 		for frame, err := range sseFrames(resp.Body) {
 			if err != nil {
 				yield(nil, err)
@@ -384,7 +378,7 @@ func partialImageChunk(
 	return &underlying.ImageChunk{Index: int(index), PartialImage: image}, nil
 }
 
-func decodeImage(b64 string, format string, fallback underlying.ImageFormat) (*underlying.ImageSource, error) {
+func decodeImage(b64 string, format string, fallback underlying.ImageFormat) (*underlying.MediaContent, error) {
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return nil, fmt.Errorf("decode generated image: %w", err)
@@ -394,7 +388,7 @@ func decodeImage(b64 string, format string, fallback underlying.ImageFormat) (*u
 		format = string(fallback)
 	}
 
-	return &underlying.ImageSource{MediaType: mediaTypeFromFormat(format), Data: data}, nil
+	return &underlying.MediaContent{MediaType: mediaTypeFromFormat(format), Data: data}, nil
 }
 
 func mediaTypeFromFormat(format string) underlying.MediaType {

@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -258,32 +257,18 @@ func inputContentFromUser(
 			},
 		})
 
-	case *underlying.DataContent:
-		if c.MediaType.Image() {
-			encodedData := base64.StdEncoding.EncodeToString(c.Data)
-			return append(inputs, InputMessageContent{
-				Type: InputTypeImage,
-				InputImage: &InputImage{
-					ImageURL: fmt.Sprintf("data:%s;base64,%s", c.MediaType, encodedData),
-				},
-			})
+	case *underlying.MediaContent:
+		imageURI := c.ImageURI()
+		if imageURI == "" {
+			return inputs
 		}
 
-		return inputs
-
-	case *underlying.URIContent:
-		// The images api accepts both http(s) and data URLs verbatim, so URI images (ex: an image address for
-		// vision understanding) pass through unchanged.
-		if c.MediaType.Image() {
-			return append(inputs, InputMessageContent{
-				Type: InputTypeImage,
-				InputImage: &InputImage{
-					ImageURL: c.URI,
-				},
-			})
-		}
-
-		return inputs
+		return append(inputs, InputMessageContent{
+			Type: InputTypeImage,
+			InputImage: &InputImage{
+				ImageURL: imageURI,
+			},
+		})
 
 	default:
 		panic("unsupported message content")

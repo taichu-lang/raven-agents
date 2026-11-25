@@ -33,11 +33,10 @@ func main() {
 
 	// Text-to-image, streaming progressive previews while the image renders.
 	generated, err := generate(ctx, provider, dir, "generated.png", &underlying.ImageRequest{
-		Prompt:        "A red panda sipping tea on a mountain cliff at dawn",
-		Size:          underlying.ImageSizeSquare,
-		Quality:       underlying.ImageQualityMedium,
-		Format:        underlying.ImageFormatPNG,
-		PartialImages: 2,
+		Prompt:  "A red panda sipping tea on a mountain cliff at dawn",
+		Size:    underlying.ImageSizeSquare,
+		Quality: underlying.ImageQualityMedium,
+		Format:  underlying.ImageFormatPNG,
 	})
 	if err != nil {
 		slog.Error("generation failed", "err", err)
@@ -46,10 +45,9 @@ func main() {
 
 	// Edit the generated image: source images travel as bytes in the request.
 	edited, err := generate(ctx, provider, dir, "edited.png", &underlying.ImageRequest{
-		Prompt:        "Recolor the scene in a warm sunset palette",
-		Images:        []*underlying.ImageSource{generated.Images[0]},
-		Size:          underlying.ImageSizeLandscape,
-		InputFidelity: "high",
+		Prompt: "Recolor the scene in a warm sunset palette",
+		Images: []*underlying.MediaContent{generated.Images[0]},
+		Size:   underlying.ImageSizeLandscape,
 	})
 	if err != nil {
 		slog.Error("editing failed", "err", err)
@@ -79,8 +77,8 @@ func main() {
 	}
 }
 
-// generate consumes the image stream, logs partial previews, saves the final image
-// into dir/name and returns the terminal result.
+// generate consumes the image stream, logs partial previews, saves the final image into dir/name and returns
+// the terminal result.
 func generate(
 	ctx context.Context,
 	provider *openai.Provider,
@@ -88,10 +86,49 @@ func generate(
 	name string,
 	req *underlying.ImageRequest,
 ) (*underlying.ImageResult, error) {
-
 	result, err := provider.GenImage(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if result == nil {
+		slog.Error("stream ended without a result", "request", name)
+		return nil, nil
+	}
+
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, result.Images[0].Data, 0o600); err != nil {
+		return nil, err
+	}
+
+	if result.Usage != nil {
+		slog.Info("image saved", "path", path, "usage", result.Usage.Total)
+	}
+
+	return result, nil
+}
+
+func generateStream(
+	ctx context.Context,
+	provider *openai.Provider,
+	dir string,
+	name string,
+	req *underlying.ImageRequest,
+) (*underlying.ImageResult, error) {
+	stream, err := provider.GenImageStream(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var result *underlying.ImageResult
+	for chunk, err := range stream {
+		if err != nil {
+			return nil, err
+		}
+
+		if chunk.Result != nil {
+			result = chunk.Result
+		}
 	}
 
 	if result == nil {

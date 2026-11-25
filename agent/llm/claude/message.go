@@ -105,21 +105,12 @@ func blockFrom(
 	case *underlying.SummaryContent:
 		return anthropic.NewTextBlock(summaryHeader + c.Text), true, nil
 
-	case *underlying.DataContent:
+	case *underlying.MediaContent:
 		if !c.MediaType.Image() {
 			return block, false, nil
 		}
 
-		encoded := base64.StdEncoding.EncodeToString(c.Data)
-
-		return anthropic.NewImageBlockBase64(string(c.MediaType), encoded), true, nil
-
-	case *underlying.URIContent:
-		if !c.MediaType.Image() {
-			return block, false, nil
-		}
-
-		return imageBlockFromURI(c), true, nil
+		return imageBlockFromMedia(c), true, nil
 
 	case *underlying.ReasoningContent:
 		if role != underlying.RoleAssistant {
@@ -144,7 +135,13 @@ func blockFrom(
 	}
 }
 
-func imageBlockFromURI(c *underlying.URIContent) anthropic.ContentBlockParamUnion {
+func imageBlockFromMedia(c *underlying.MediaContent) anthropic.ContentBlockParamUnion {
+	if c.URI == "" {
+		encoded := base64.StdEncoding.EncodeToString(c.Data)
+
+		return anthropic.NewImageBlockBase64(string(c.MediaType), encoded)
+	}
+
 	// A data url carries the payload inline, which the api only accepts as a base64 source.
 	if header, data, found := strings.Cut(c.URI, ","); found && strings.HasPrefix(header, "data:") {
 		return anthropic.NewImageBlockBase64(string(c.MediaType), data)

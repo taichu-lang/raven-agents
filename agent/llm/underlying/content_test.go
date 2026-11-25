@@ -105,12 +105,12 @@ func TestSummaryContentRoundTrip(t *testing.T) {
 	}
 }
 
-// URI contents carry image addresses for vision understanding and generated image results; a kind missing from
+// Media contents carry image addresses for vision understanding and generated image results; a kind missing from
 // unmarshalMessageContent would break conversation restore, so the round trip is guarded here.
-func TestURIContentRoundTrip(t *testing.T) {
+func TestMediaContentRoundTrip(t *testing.T) {
 	contents := MessageContents{
-		NewURIContent(MediaTypeImagePNG, "https://example.com/image.png"),
-		NewDataContent(MediaTypeImageWebP, []byte("webp-bytes")),
+		NewMediaContentFromURI(MediaTypeImagePNG, "https://example.com/image.png"),
+		NewMediaContentFromData(MediaTypeImageWebP, []byte("webp-bytes")),
 	}
 
 	data, err := json.Marshal(contents)
@@ -127,7 +127,7 @@ func TestURIContentRoundTrip(t *testing.T) {
 		t.Fatalf("expected 2 restored contents, got %d: %s", len(restored), data)
 	}
 
-	uri, ok := restored[0].(*URIContent)
+	uri, ok := restored[0].(*MediaContent)
 	if !ok {
 		t.Fatalf("the uri content restored as %T", restored[0])
 	}
@@ -135,7 +135,7 @@ func TestURIContentRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected uri content: %+v", uri)
 	}
 
-	binary, ok := restored[1].(*DataContent)
+	binary, ok := restored[1].(*MediaContent)
 	if !ok {
 		t.Fatalf("the data content restored as %T", restored[1])
 	}

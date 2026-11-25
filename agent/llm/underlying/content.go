@@ -1,7 +1,9 @@
 package underlying
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -11,12 +13,11 @@ type ContentKind string
 
 const (
 	ContentKindText  ContentKind = "text"
-	ContentKindURI   ContentKind = "uri"
 	ContentKindUsage ContentKind = "usage"
 
-	// ContentKindData is used to store binary and non-binary data, which depends on the media type.
+	// ContentKindMedia carries a media payload, either inline bytes or a URI, which depends on the media type.
 	// Ex: an image file, a text file, etc.
-	ContentKindData ContentKind = "data"
+	ContentKindMedia ContentKind = "media"
 
 	ContentKindToolCall   ContentKind = "tool_call"
 	ContentKindToolResult ContentKind = "tool_result"
@@ -82,34 +83,6 @@ func (t TextContent) Kind() ContentKind {
 
 func (t *TextContent) MarshalJSON() ([]byte, error) {
 	type alias TextContent
-	tmp := struct {
-		*alias
-		Type ContentKind `json:"type"`
-	}{
-		alias: (*alias)(t),
-		Type:  t.Kind(),
-	}
-	return json.Marshal(tmp)
-}
-
-type URIContent struct {
-	MediaType MediaType `json:"media_type"`
-	URI       string    `json:"uri"`
-}
-
-func NewURIContent(media MediaType, uri string) *URIContent {
-	return &URIContent{
-		MediaType: media,
-		URI:       uri,
-	}
-}
-
-func (t URIContent) Kind() ContentKind {
-	return ContentKindURI
-}
-
-func (t *URIContent) MarshalJSON() ([]byte, error) {
-	type alias URIContent
 	tmp := struct {
 		*alias
 		Type ContentKind `json:"type"`
@@ -244,32 +217,66 @@ func (r *ReasoningContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-type DataContent struct {
+// MediaContent carries one media payload. Exactly one of URI and Data is set: URI points at the media (an
+// http(s) or data url), Data holds the raw bytes.
+type MediaContent struct {
 	MediaType MediaType `json:"media_type"`
-	Data      []byte    `json:"data"`
+	URI       string    `json:"uri,omitzero"`
+	Data      []byte    `json:"data,omitzero"`
 }
 
-func NewDataContent(media MediaType, data []byte) *DataContent {
-	return &DataContent{
+func NewMediaContentFromURI(media MediaType, uri string) *MediaContent {
+	return &MediaContent{
+		MediaType: media,
+		URI:       uri,
+	}
+}
+
+func NewMediaContentFromData(media MediaType, data []byte) *MediaContent {
+	return &MediaContent{
 		MediaType: media,
 		Data:      data,
 	}
 }
 
-func (d DataContent) Kind() ContentKind {
-	return ContentKindData
+func (m MediaContent) Kind() ContentKind {
+	return ContentKindMedia
 }
 
-func (d *DataContent) MarshalJSON() ([]byte, error) {
-	type alias DataContent
+func (m *MediaContent) MarshalJSON() ([]byte, error) {
+	type alias MediaContent
 	tmp := struct {
 		*alias
 		Type ContentKind `json:"type"`
 	}{
-		alias: (*alias)(d),
-		Type:  d.Kind(),
+		alias: (*alias)(m),
+		Type:  m.Kind(),
 	}
 	return json.Marshal(tmp)
+}
+
+func (s *MediaContent) Validate() error {
+	switch {
+	case len(s.Data) > 0 && s.URI != "":
+		return errors.New("media content: data and uri are mutually exclusive")
+	case len(s.Data) == 0 && s.URI == "":
+		return errors.New("media content: one of data or uri is required")
+	}
+
+	return nil
+}
+
+func (s *MediaContent) ImageURI() string {
+	if !s.MediaType.Image() {
+		return ""
+	}
+
+	if s.URI != "" {
+		return s.URI
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(s.Data)
+	return fmt.Sprintf("data:%s;base64,%s", s.MediaType, encoded)
 }
 
 // TODO(Leo): Move to agent, as llm does not render SkillContent.
@@ -443,12 +450,10 @@ func unmarshalMessageContent(data json.RawMessage) (MessageContent, error) {
 	switch discriminator.Type {
 	case ContentKindText:
 		content = new(TextContent)
-	case ContentKindURI:
-		content = new(URIContent)
 	case ContentKindUsage:
 		content = new(UsageContent)
-	case ContentKindData:
-		content = new(DataContent)
+	case ContentKindMedia:
+		content = new(MediaContent)
 	case ContentKindToolCall:
 		content = new(ToolCallContent)
 	case ContentKindToolResult:
