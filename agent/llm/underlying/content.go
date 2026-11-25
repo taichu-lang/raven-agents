@@ -121,7 +121,7 @@ func (t *URIContent) MarshalJSON() ([]byte, error) {
 }
 
 type UsageContent struct {
-	// Input is the number from provider, without deducting `CacheRead`.
+	// Input is including CacheRead and CacheWrite.
 	Input      int64 `json:"input,omitzero"`
 	Output     int64 `json:"output,omitzero"`
 	Total      int64 `json:"total,omitzero"`

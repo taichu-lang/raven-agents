@@ -42,7 +42,7 @@ func NewTavilyCrawler(cfg *TavilyConfig) *TavilyCrawler {
 	return &TavilyCrawler{
 		BaseURL:    strings.TrimRight(cfg.BaseURL, "/"),
 		ApiKey:     cfg.ApiKey,
-		httpClient: util.StreamClient,
+		httpClient: util.DefaultClient,
 	}
 }
 

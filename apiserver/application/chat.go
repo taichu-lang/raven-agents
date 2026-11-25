@@ -15,7 +15,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/skill"
 	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 	"github.com/taichu-lang/raven-agents/pkg/webcrawler"
 	"github.com/taichu-lang/raven-agents/sandbox"
@@ -29,17 +29,19 @@ const TemplateTitlePrompt = "title.prompt"
 type ChatService struct {
 	cfg             *configs.Config
 	logger          *slog.Logger
-	store           *conversation.ConversationStore
+	store           *infrastructure.ConversationStore
 	skillsDir       string
 	sandboxProvider sandbox.Provider
 	promptTemplate  *template.Template
 	models          map[string]*underlying.Catalog
+	mcp             *MCPService
 }
 
 func NewChatService(
 	cfg *configs.Config,
 	catalogs configs.ModelCatalogSlice,
-	store *conversation.ConversationStore,
+	store *infrastructure.ConversationStore,
+	mcpService *MCPService,
 ) *ChatService {
 	temp, err := template.New(TemplateTitlePrompt).Parse(cfg.Prompt.TitleGen)
 	if err != nil {
@@ -59,6 +61,7 @@ func NewChatService(
 		sandboxProvider: local.NewProvider(),
 		promptTemplate:  temp,
 		models:          models,
+		mcp:             mcpService,
 	}
 }
 
@@ -88,7 +91,7 @@ func (s *ChatService) Chat(
 	}
 
 	if c == nil {
-		c = &conversation.ConversationModel{
+		c = &infrastructure.ConversationModel{
 			ConversationID: req.ConversationID,
 			UserID:         userID,
 		}
@@ -131,7 +134,19 @@ func (s *ChatService) Chat(
 		options.Middlewares = append(options.Middlewares, source.WithMiddlewares(ctx, mc)...)
 	}
 
-	a := agent.New(bus, tool.NewToolRegistry(nil), options)
+	// The MCP tools are deferred: they are dispatchable by name and found through the tool search, but never
+	// advertised in the tools param. They are registered before the agent is built, as the tool search entry is
+	// broadcast only while the registry has deferred tools.
+	registry := tool.NewToolRegistry(nil)
+	if s.mcp != nil {
+		servers, tools := s.mcp.Resolve(ctx, userID)
+		options.MCPServers = servers
+		for _, t := range tools {
+			registry.RegisterDeferred(t)
+		}
+	}
+
+	a := agent.New(bus, registry, options)
 
 	skills := s.resolveSkills(req.Metadata.Skills)
 	go func() {

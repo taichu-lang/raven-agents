@@ -9,6 +9,7 @@ import (
 )
 
 var StreamClient *http.Client
+var DefaultClient *http.Client
 
 func UriAppend(uri string, part string) (string, error) {
 	u, err := url.Parse(uri)
@@ -57,5 +58,9 @@ func init() {
 	// response header. So drops ResponseHeaderTimeout. The request context is the only deadline.
 	StreamClient = &http.Client{
 		Transport: newTransport(0, true),
+	}
+
+	DefaultClient = &http.Client{
+		Transport: newTransport(60, false),
 	}
 }

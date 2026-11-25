@@ -169,7 +169,7 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 				ReasoningItem: &ReasoningItem{
 					Type:             "reasoning",
 					ID:               reasoning.ID,
-					Summary:          reasoningSummaryFrom(reasoning.Summary, reasoning.EncryptedContent != ""),
+					Summary:          reasoningSummaryFrom(reasoning.Summary),
 					EncryptedContent: reasoning.EncryptedContent,
 				},
 			})
@@ -223,19 +223,13 @@ func inputItemsFromAssistant(contents underlying.MessageContents) []*InputItemUn
 // reasoningSummaryFrom converts the display summary stored in ReasoningContent back into reasoning summary
 // parts for the input item. The API requires the summary field to be present, so an empty summary still yields
 // a (non-nil) empty list.
-func reasoningSummaryFrom(summary string, hasEncrypted bool) []ReasoningSummary {
-	// Some open-source models do not support encrypted reasoning content.
-	if hasEncrypted {
-		return nil
-	}
-
+func reasoningSummaryFrom(summary string) []ReasoningSummary {
+	// Some provider needs summary to be present even if it is empty.
 	parts := make([]ReasoningSummary, 0, 1)
-	if summary != "" {
-		parts = append(parts, ReasoningSummary{
-			Type: "summary_text",
-			Text: summary,
-		})
-	}
+	parts = append(parts, ReasoningSummary{
+		Type: "summary_text",
+		Text: summary,
+	})
 
 	return parts
 }

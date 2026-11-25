@@ -39,7 +39,7 @@ type imageGenerateRequest struct {
 type imageEditRequest struct {
 	imageBaseRequest
 	Images        []imageEditSource `json:"images"`
-	Mask          string            `json:"mask,omitzero"`
+	Mask          imageEditSource   `json:"mask,omitzero"`
 	InputFidelity string            `json:"input_fidelity,omitzero"`
 }
 
@@ -238,7 +238,7 @@ func (p *Provider) buildImageRequestBody(
 				return nil, false, fmt.Errorf("image request: mask: %w", err)
 			}
 
-			editReq.Mask = maskURL
+			editReq.Mask = imageEditSource{ImageURL: maskURL}
 		}
 
 		body, err = json.Marshal(editReq)

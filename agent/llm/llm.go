@@ -78,7 +78,7 @@ func (a *Runner) beforeRun(
 	messages []*underlying.Message,
 	options *underlying.GenOptions,
 ) (context.Context, []*underlying.Message, *underlying.GenOptions) {
-	options = underlying.WithDefaultOptions(options)
+	options = options.WithDefaults()
 	return ctx, messages, options
 }
 

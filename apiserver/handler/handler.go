@@ -6,6 +6,7 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/handler/middlewares"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
+	"github.com/taichu-lang/raven-agents/mcp"
 )
 
 func AddRouters(
@@ -13,7 +14,8 @@ func AddRouters(
 	cfg *configs.Config,
 	catalogs configs.ModelCatalogSlice,
 	store *infrastructure.Store,
-) {
+	mcpManager *mcp.Manager,
+) error {
 	// Registered on the engine so that preflight OPTIONS requests, which match no route, still pass through it.
 	router.Use(middlewares.CORS())
 	group := router.Group("/api/v1")
@@ -21,11 +23,18 @@ func AddRouters(
 	modelHandler := NewModelHandler(catalogs)
 	modelHandler.AddRouters(group)
 
-	chatService := application.NewChatService(cfg, catalogs, store.Conversation)
+	mcpService, err := application.NewMCPService(store.MCP, mcpManager, cfg.MCP.CredentialKey)
+	if err != nil {
+		return err
+	}
+
+	chatService := application.NewChatService(cfg, catalogs, store.Conversation, mcpService)
 	chatHandler := NewChatHandler(chatService)
 	chatHandler.AddRouters(group)
 
 	skillService := application.NewSkillService(store.Skill)
 	skillHandler := NewSkillHandler(skillService)
 	skillHandler.AddRouters(group)
+
+	return nil
 }

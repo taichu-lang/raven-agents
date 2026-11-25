@@ -157,12 +157,11 @@ type toolSearchInput struct {
 // tools. On the native path the openai adapter renders this name as the {type:"tool_search",
 // execution:"client"} tool and the model answers with tool_search_call items, so the handler is only a fallback
 // for endpoints that surface it as a plain function call.
-func NewToolSearchTool(registry *tool.ToolRegistry) tool.FuncTool {
+func NewToolSearchTool(registry *tool.ToolRegistry, servers []MCPServerInfo) tool.FuncTool {
 	searchTool, err := functool.New(functool.Config{
 		Name: underlying.ToolSearchToolName,
-		// TODO(Leo): list the enabled MCP servers here (design doc 3.6 discoverability) once the MCP manager
-		// lands; the description must stay constant within a turn.
-		Description: prompts[underlying.ToolSearchToolName],
+		// The description must stay constant within a turn, for prompt caching.
+		Description: toolSearchDescription(servers),
 	}, func(ctx context.Context, input toolSearchInput) (string, error) {
 		hits, err := registry.Search(ctx, input.Query, input.Limit)
 		if err != nil {
@@ -176,6 +175,31 @@ func NewToolSearchTool(registry *tool.ToolRegistry) tool.FuncTool {
 	}
 
 	return searchTool
+}
+
+// toolSearchDescription appends the enabled MCP servers to the base prompt (design doc 3.6 discoverability),
+// otherwise the model cannot know which capabilities are worth searching for.
+func toolSearchDescription(servers []MCPServerInfo) string {
+	description := prompts[underlying.ToolSearchToolName]
+	if len(servers) == 0 {
+		return description
+	}
+
+	var sb strings.Builder
+	sb.WriteString(description)
+	sb.WriteString("\n\nEnabled MCP servers:\n")
+	for _, server := range servers {
+		sb.WriteString("- ")
+		sb.WriteString(server.Name)
+		if server.Description != "" {
+			sb.WriteString(": ")
+			sb.WriteString(server.Description)
+		}
+
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimSuffix(sb.String(), "\n")
 }
 
 // formatToolSearchHits renders the fallback function-call result as one line per hit.
@@ -295,6 +319,10 @@ func NewWebSearchTool(crawler webcrawler.Crawler, registry *AnnotationSourceRegi
 		Name:        ToolNameWebSearch,
 		Description: prompts[ToolNameWebSearch],
 	}, func(ctx context.Context, input webcrawler.SearchRequest) (*webSearchOutput, error) {
+		if input.MaxResults == 0 {
+			input.MaxResults = 5
+		}
+
 		resp, err := crawler.Search(ctx, &input)
 		if err != nil {
 			return nil, err

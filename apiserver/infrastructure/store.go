@@ -3,8 +3,6 @@ package infrastructure
 import (
 	"log/slog"
 
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/skill"
 	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/uptrace/bun"
 )
@@ -13,8 +11,9 @@ type Store struct {
 	db     *bun.DB
 	logger *slog.Logger
 
-	Conversation *conversation.ConversationStore
-	Skill        *skill.SkillStore
+	Conversation *ConversationStore
+	Skill        *SkillStore
+	MCP          *MCPStore
 }
 
 func NewStore(cfg *database.StoreConfig) *Store {
@@ -43,8 +42,9 @@ func NewStore(cfg *database.StoreConfig) *Store {
 	return &Store{
 		db:           db,
 		logger:       logger,
-		Conversation: conversation.NewConversationStore(db, logger),
-		Skill:        skill.NewSkillStore(db, logger),
+		Conversation: NewConversationStore(db, logger),
+		Skill:        NewSkillStore(db, logger),
+		MCP:          NewMCPStore(db, logger),
 	}
 }
 

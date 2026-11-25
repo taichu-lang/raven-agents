@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
 	"github.com/taichu-lang/raven-agents/pkg/database"
 )
 
@@ -59,7 +59,7 @@ func TurnsFromModels(
 	return views
 }
 
-func ConversationFromModel(model *conversation.ConversationModel) Conversation {
+func ConversationFromModel(model *infrastructure.ConversationModel) Conversation {
 	return Conversation{
 		ID:             model.ID,
 		ConversationID: model.ConversationID,

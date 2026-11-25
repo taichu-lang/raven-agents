@@ -10,7 +10,7 @@ import (
 	"github.com/taichu-lang/raven-agents/agent/llm"
 	"github.com/taichu-lang/raven-agents/agent/llm/underlying"
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/conversation"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
 	"github.com/taichu-lang/raven-agents/pkg/database"
 	"github.com/taichu-lang/raven-agents/pkg/event"
 )
@@ -89,7 +89,7 @@ func (s *ChatService) GetConversation(
 
 func (s *ChatService) genConversationTitle(
 	ctx context.Context,
-	c *conversation.ConversationModel,
+	c *infrastructure.ConversationModel,
 	text string,
 	model string,
 	bus event.Bus,

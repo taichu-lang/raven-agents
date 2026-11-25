@@ -12,8 +12,15 @@ type ModelHandler struct {
 }
 
 func NewModelHandler(catalogs configs.ModelCatalogSlice) *ModelHandler {
+	models := make(configs.ModelCatalogSlice, 0, len(catalogs))
+	for _, c := range catalogs {
+		m := *c
+		m.Provider = ""
+		models = append(models, &m)
+	}
+
 	return &ModelHandler{
-		catalogs: catalogs,
+		catalogs: models,
 	}
 }
 

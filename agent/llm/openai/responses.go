@@ -46,7 +46,7 @@ func (p *Provider) GenText(
 ) underlying.ResponseStream {
 	return func(yield func(*underlying.ResponseChunk, error) bool) {
 		model := p.modelID()
-		opts := underlying.WithDefaultOptions(options)
+		opts := options.WithDefaults()
 		params := p.newResponsesParams(model, messages, opts)
 		body, err := json.Marshal(params)
 		if err != nil {

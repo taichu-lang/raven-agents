@@ -58,6 +58,16 @@ type AgentOptions struct {
 	Compact *CompactOptions
 
 	Crawler webcrawler.Crawler
+
+	// MCPServers lists the MCP servers whose tools are registered as deferred tools of the registry, so the
+	// model knows there is something to search for. The list must stay constant within a turn.
+	MCPServers []MCPServerInfo
+}
+
+// MCPServerInfo is the model facing summary of an enabled MCP server.
+type MCPServerInfo struct {
+	Name        string
+	Description string
 }
 
 type Agent struct {
@@ -157,7 +167,7 @@ func (a *Agent) addBuiltinTools(options *AgentOptions) {
 
 	// The tool search entry is broadcast only while deferred tools exist; the active set is
 	// computed once per turn, and deferred tools are registered before the turn starts.
-	a.ToolRegistry.Register(NewToolSearchTool(a.ToolRegistry), func() bool {
+	a.ToolRegistry.Register(NewToolSearchTool(a.ToolRegistry, options.MCPServers), func() bool {
 		return a.ToolRegistry.HasDeferred()
 	})
 

@@ -21,6 +21,14 @@ type StoreConfig struct {
 
 // EmptyJSONObject is the fallback for the NOT NULL json columns.
 var EmptyJSONObject = json.RawMessage(`{}`)
+var EmptyJSONArray = json.RawMessage(`[]`)
+
+var (
+	ErrRecordNotFound = errors.New("record not found")
+
+	// ErrRecordDuplicated is returned when some record has the same value for a unique constraint.
+	ErrRecordDuplicated = errors.New("record already exists")
+)
 
 // IsUniqueViolation reports whether err is a unique constraint violation of the underlying
 // database. Postgres reports it through the pgdriver error type, SQLite through the error

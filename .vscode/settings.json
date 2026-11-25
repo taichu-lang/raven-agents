@@ -5,6 +5,8 @@
     "functool",
     "gonic",
     "jsonschema",
+    "mcpsdk",
+    "modelcontextprotocol",
     "omitzero",
     "ssestream",
     "taichu",

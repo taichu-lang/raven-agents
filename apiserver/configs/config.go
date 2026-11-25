@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -14,12 +15,20 @@ type Prompt struct {
 	TitleGen string `yaml:"title_gen"`
 }
 
+// MCP configures the MCP integration. The servers themselves live in the database registry.
+type MCP struct {
+	// CredentialKey is the base64 encoded 32 byte key sealing the per-user credentials of the MCP servers. It
+	// may be empty: servers declaring credentials are then unavailable, the others are not affected.
+	CredentialKey string `yaml:"credential_key"`
+}
+
 type Config struct {
 	Instructions string                `yaml:"instructions"`
 	DefaultModel string                `yaml:"default_model"`
 	Store        *database.StoreConfig `yaml:"store"`
 	Providers    []ModelProvider       `yaml:"providers"`
 	WebCrawler   *webcrawler.Config    `yaml:"webcrawler,omitempty"`
+	MCP          MCP                   `yaml:"mcp"`
 
 	// TODO(Leo): resolved from runtime?
 	AppDir string `yaml:"app_dir"`
@@ -60,6 +69,13 @@ func (c *Config) Validate() error {
 
 	if c.Prompt.TitleGen == "" {
 		return errors.New("prompt.title_gen is required")
+	}
+
+	if c.MCP.CredentialKey != "" {
+		key, err := base64.StdEncoding.DecodeString(c.MCP.CredentialKey)
+		if err != nil || len(key) != 32 {
+			return errors.New("mcp.credential_key must be a base64 encoded 32 byte key")
+		}
 	}
 
 	return nil

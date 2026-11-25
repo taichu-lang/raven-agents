@@ -8,6 +8,7 @@ import (
 	"github.com/taichu-lang/raven-agents/apiserver/configs"
 	"github.com/taichu-lang/raven-agents/apiserver/handler"
 	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
+	"github.com/taichu-lang/raven-agents/mcp"
 	"github.com/taichu-lang/raven-agents/pkg/observability"
 )
 
@@ -38,8 +39,16 @@ func main() {
 
 	defer tp.Shutdown(ctx)
 
+	// MCP sessions outlive the requests that opened them; stdio servers are child processes closed here.
+	mcpManager := mcp.NewManager()
+	defer mcpManager.Close()
+
 	engine := gin.Default()
-	handler.AddRouters(engine, cfg, catalogs, store)
+	if err := handler.AddRouters(engine, cfg, catalogs, store, mcpManager); err != nil {
+		logger.Error("failed to add routers", "err", err)
+		os.Exit(1)
+	}
+
 	if err := engine.Run("0.0.0.0:8001"); err != nil {
 		logger.Error("failed to start server", "err", err)
 		os.Exit(1)

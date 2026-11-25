@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"github.com/taichu-lang/raven-agents/apiserver/domain"
-	"github.com/taichu-lang/raven-agents/apiserver/infrastructure/skill"
+	"github.com/taichu-lang/raven-agents/apiserver/infrastructure"
 )
 
 // SkillService serves the skill marketplace.
 type SkillService struct {
-	store *skill.SkillStore
+	store *infrastructure.SkillStore
 }
 
-func NewSkillService(store *skill.SkillStore) *SkillService {
+func NewSkillService(store *infrastructure.SkillStore) *SkillService {
 	return &SkillService{
 		store: store,
 	}

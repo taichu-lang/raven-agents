@@ -104,6 +104,10 @@ prompt:
       User prompt:
       {{.UserInput}}
 
+mcp:
+  # base64 encoded 32 byte key, e.g. `openssl rand -base64 32`
+  credential_key: "${RAVEN_MCP_CREDENTIAL_KEY}"
+
 webcrawler:
   tavily:
     api_key: ""

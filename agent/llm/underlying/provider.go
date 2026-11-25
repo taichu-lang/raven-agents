@@ -115,11 +115,17 @@ func ApplyGenOptions(options []WithGenOption) *GenOptions {
 	return opts
 }
 
-func WithDefaultOptions(options *GenOptions) *GenOptions {
-	if options == nil {
-		return &GenOptions{
-			Stream: true,
-		}
+func (o *GenOptions) WithDefaults() *GenOptions {
+	options := &GenOptions{
+		Stream: true,
+	}
+
+	if o.OutputFormat != nil {
+		options.OutputFormat = o.OutputFormat
+	}
+
+	if o.Tools != nil {
+		options.Tools = o.Tools
 	}
 
 	return options
